@@ -1,0 +1,12 @@
+{
+  "qualitative_assessment": {
+    "accessibility": 0,
+    "use_permissiveness": 0,
+    "availability": 0,
+    "compliance": 0,
+    "provenance": 0,
+    "trustworthiness": 0,
+    "consistency": 0
+  },
+  "instructions": "Replace 0 with your score (1-5) for each dimension"
+}
