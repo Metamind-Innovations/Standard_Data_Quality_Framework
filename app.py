@@ -210,7 +210,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
                     margin=dict(l=0, r=0, t=0, b=0),
                     annotations=[dict(text=f"{rating}/5", x=0.5, y=0.5, font_size=20, showarrow=False)]
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key=f"{metric_type}_{metric}_pie")
 
                 st.markdown(f"**Raw Value:** {value:.3f}")
                 st.markdown("_Higher values are better for all metrics_")
@@ -252,7 +252,7 @@ def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
     )
 
     fig.update_traces(fill='toself')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"radar_{title.replace(' ', '_').lower()}")
 
 
 def calculate_qualitative_ratings(scores):
