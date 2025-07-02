@@ -2,7 +2,31 @@ USE_CASES = {
     "Use case 1": {
         "name": "DuneAI",
         "description": "Lung Cancer medical algorithm evaluation supporting EHR and imaging data",
-        "implemented": False
+        "implemented": True,
+        "expected_columns": [
+            "PatientID", "age", "clinical.T.Stage", "Clinical.N.Stage", "Clinical.M.Stage",
+            "Overall.Stage", "Histology", "gender", "Survival.time", "deadstatus.event"
+        ],
+        "column_types": {
+            "PatientID": "categorical",
+            "age": "numeric",
+            "clinical.T.Stage": "categorical",
+            "Clinical.N.Stage": "categorical",
+            "Clinical.M.Stage": "categorical",
+            "Overall.Stage": "categorical",
+            "Histology": "categorical",
+            "gender": "categorical",
+            "Survival.time": "numeric",
+            "deadstatus.event": "categorical"
+        },
+        "expected_ranges": {
+            "age": [0, 120],
+            "clinical.T.Stage": [1, 5],
+            "Clinical.N.Stage": [0, 4],
+            "Clinical.M.Stage": [0, 3],
+            "Survival.time": [0, 10000]
+        },
+        "target_column": "deadstatus.event"
     },
     "Use case 2": {
         "name": "PGx2P",
@@ -19,8 +43,8 @@ USE_CASES = {
         "description": "Medical AI models for COPD and ASTHMA inpatient risk stratification",
         "implemented": True,
         "expected_columns": [
-            "age", "Sex", "Pneumonia", "PH", "DiaPr", "Respiratory rate", 
-            "SPO2", "GCS", "SysPr", "Pulse rate", "SM PY", "smoker", 
+            "age", "Sex", "Pneumonia", "PH", "DiaPr", "Respiratory rate",
+            "SPO2", "GCS", "SysPr", "Pulse rate", "SM PY", "smoker",
             "ex sm years", "hospitalizations", "(MT)"
         ],
         "column_types": {

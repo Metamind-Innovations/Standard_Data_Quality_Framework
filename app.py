@@ -1,10 +1,10 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import os
 import json
-import matplotlib.pyplot as plt
+import os
+
+import numpy as np
 import plotly.express as px
+import streamlit as st
+
 from config.use_case_config import USE_CASES
 from src.data_loader import load_data, load_metadata, save_example_data
 from src.quality_checks import run_all_checks
@@ -117,9 +117,11 @@ QUALITATIVE_DIMENSIONS = {
     }
 }
 
+
 def create_assets_dir():
     if not os.path.exists("assets"):
         os.makedirs("assets")
+
 
 def save_qualitative_template():
     template = {
@@ -134,9 +136,10 @@ def save_qualitative_template():
         },
         "instructions": "Replace 0 with your score (1-5) for each dimension"
     }
-    
+
     with open("assets/qualitative_template.json", "w") as f:
         json.dump(template, f, indent=2)
+
 
 def display_metrics(ratings, metric_type="Quantitative"):
     metric_names = {
@@ -147,6 +150,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "semantic_coherence": "Semantic Coherence",
         "completeness": "Completeness",
         "relational_consistency": "Relational Consistency",
+        "clinical_stage_consistency": "Clinical Stage Consistency",
         "accessibility": "Accessibility",
         "use_permissiveness": "Use Permissiveness",
         "availability": "Availability",
@@ -155,7 +159,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "trustworthiness": "Trustworthiness",
         "consistency": "Consistency"
     }
-    
+
     calculation_methods = {
         "population_representativity": "Score based on how close class distribution is to ideal balance",
         "metadata_granularity": "patients with metadata / total patients",
@@ -164,6 +168,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "semantic_coherence": "unique column names / total columns",
         "completeness": "non-missing values / total values",
         "relational_consistency": "unique rows / total rows",
+        "clinical_stage_consistency": "clinically consistent staging / total staging records",
         "accessibility": "User assessment based on data obtainability and clarity",
         "use_permissiveness": "User assessment based on license permissiveness",
         "availability": "User assessment based on data availability and access",
@@ -172,7 +177,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "trustworthiness": "User assessment based on trust indicators",
         "consistency": "User assessment based on logical coherence"
     }
-    
+
     rating_thresholds = """
         - Value 0.0-0.2: Rating 1/5
         - Value 0.2-0.4: Rating 2/5
@@ -180,40 +185,41 @@ def display_metrics(ratings, metric_type="Quantitative"):
         - Value 0.6-0.8: Rating 4/5
         - Value 0.8-1.0: Rating 5/5
         """
-    
+
     for metric, (rating, value, explanation) in ratings.items():
         display_name = metric_names.get(metric, metric)
-        
+
         with st.expander(f"{display_name}: {rating}/5", expanded=True):
             cols = st.columns([2, 1])
-            
+
             with cols[0]:
                 st.markdown("**Explanation:**")
                 st.write(explanation)
-                
+
                 st.markdown("**Calculation Method:**")
                 st.write(calculation_methods.get(metric, "No calculation method available"))
-                
+
                 st.markdown("**Rating Thresholds:**")
                 st.markdown(rating_thresholds)
-            
+
             with cols[1]:
-                fig = px.pie(values=[rating, 5-rating], names=["Score", "Remaining"], 
-                            hole=0.7, color_discrete_sequence=["#1f77b4", "#e0e0e0"])
+                fig = px.pie(values=[rating, 5 - rating], names=["Score", "Remaining"],
+                             hole=0.7, color_discrete_sequence=["#1f77b4", "#e0e0e0"])
                 fig.update_layout(
                     showlegend=False,
                     margin=dict(l=0, r=0, t=0, b=0),
                     annotations=[dict(text=f"{rating}/5", x=0.5, y=0.5, font_size=20, showarrow=False)]
                 )
                 st.plotly_chart(fig, use_container_width=True)
-                
+
                 st.markdown(f"**Raw Value:** {value:.3f}")
                 st.markdown("_Higher values are better for all metrics_")
+
 
 def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
     metrics = []
     values = []
-    
+
     for metric, (rating, _, _) in ratings.items():
         metric_names = {
             "population_representativity": "Pop. Representativity",
@@ -223,6 +229,7 @@ def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
             "semantic_coherence": "Semantic Coherence",
             "completeness": "Completeness",
             "relational_consistency": "Relational Consistency",
+            "clinical_stage_consistency": "Clinical Staging",
             "accessibility": "Accessibility",
             "use_permissiveness": "Use Permissiveness",
             "availability": "Availability",
@@ -231,11 +238,11 @@ def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
             "trustworthiness": "Trustworthiness",
             "consistency": "Consistency"
         }
-        
+
         display_name = metric_names.get(metric, metric)
         metrics.append(display_name)
         values.append(rating)
-    
+
     fig = px.line_polar(
         r=values,
         theta=metrics,
@@ -243,65 +250,92 @@ def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
         range_r=[0, 5],
         title=title
     )
-    
+
     fig.update_traces(fill='toself')
     st.plotly_chart(fig, use_container_width=True)
+
 
 def calculate_qualitative_ratings(scores):
     ratings = {}
     for dimension, score in scores.items():
         if dimension in QUALITATIVE_DIMENSIONS:
             value = (score - 1) / 4
-            explanation = f"User selected option {score}: {QUALITATIVE_DIMENSIONS[dimension]['options'][score-1]}"
+            explanation = f"User selected option {score}: {QUALITATIVE_DIMENSIONS[dimension]['options'][score - 1]}"
             ratings[dimension] = (score, value, explanation)
     return ratings
 
+
+def get_use_case_specific_columns(selected_use_case, data_columns):
+    """Get appropriate column suggestions based on use case and available data."""
+    use_case_info = USE_CASES.get(selected_use_case, {})
+
+    if selected_use_case == "Use case 1":
+        target_options = ["deadstatus.event", "Overall.Stage"]
+        age_options = ["age"]
+        other_options = ["Survival.time"]
+    elif selected_use_case == "Use case 4":
+        target_options = ["(MT)"]
+        age_options = ["age"]
+        other_options = ["Respiratory rate", "SPO2", "SysPr", "Pulse rate"]
+    else:
+        target_options = []
+        age_options = []
+        other_options = []
+
+    available_target = [col for col in target_options if col in data_columns]
+    available_age = [col for col in age_options if col in data_columns]
+    available_other = [col for col in other_options if col in data_columns]
+
+    return available_target, available_age, available_other
+
+
 def main():
     create_assets_dir()
-    
+
     if not os.path.exists("assets/example_data.csv"):
         save_example_data()
-    
+
     if not os.path.exists("assets/qualitative_template.json"):
         save_qualitative_template()
-    
+
     st.title("Standard Data Quality Framework")
-    
+
     st.sidebar.title("Use Case Selection")
     selected_use_case = st.sidebar.selectbox(
         "Select a Use Case",
         list(USE_CASES.keys()),
-        index=3,
+        index=0,
         key="use_case_selector"
     )
-    
+
     use_case_info = USE_CASES[selected_use_case]
-    
+
     st.sidebar.markdown(f"### {use_case_info['name']}")
     st.sidebar.markdown(f"*{use_case_info['description']}*")
-    
+
     if not use_case_info['implemented']:
-        st.warning(f"⚠️ {selected_use_case} is not yet implemented in this POC. Only Use Case 4 (ASCOPD) is currently functional.")
-    
+        st.warning(
+            f"⚠️ {selected_use_case} is not yet implemented in this POC. Only Use Case 1 (DuneAI) and Use Case 4 (ASCOPD) are currently functional.")
+
     st.sidebar.markdown("---")
-    
+
     uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
     uploaded_metadata = st.sidebar.file_uploader("Upload metadata (optional)", type="csv")
-    
+
     if uploaded_file is not None:
         try:
             st.session_state.temp_data = load_data(uploaded_file)
         except Exception as e:
             st.error(f"Error loading data: {str(e)}")
             st.session_state.temp_data = None
-    
+
     if uploaded_metadata is not None:
         try:
             st.session_state.temp_metadata = load_metadata(uploaded_metadata)
         except Exception as e:
             st.error(f"Error loading metadata: {str(e)}")
             st.session_state.temp_metadata = None
-    
+
     if st.sidebar.button("Load Data"):
         if st.session_state.temp_data is not None:
             st.session_state.processed_data = st.session_state.temp_data
@@ -310,18 +344,18 @@ def main():
             st.success("Data loaded successfully!")
         else:
             st.error("Please upload a dataset first!")
-    
+
     if st.session_state.processed_data is not None:
         st.subheader("Data Preview")
         st.dataframe(st.session_state.processed_data, use_container_width=True)
-        
+
         st.markdown("---")
         st.subheader("Qualitative Check Configuration")
-        
+
         col1, col2 = st.columns([1, 3])
         with col1:
             qualitative_file = st.file_uploader("Upload qualitative assessment (JSON)", type="json")
-            
+
             with open("assets/qualitative_template.json", "rb") as f:
                 st.download_button(
                     label="Download JSON Template",
@@ -329,7 +363,7 @@ def main():
                     file_name="qualitative_template.json",
                     mime="application/json"
                 )
-        
+
         with col2:
             if qualitative_file is not None:
                 try:
@@ -339,121 +373,126 @@ def main():
                         st.success("Qualitative assessment loaded from JSON!")
                 except Exception as e:
                     st.error(f"Error loading qualitative assessment: {str(e)}")
-        
+
         st.markdown("### Manual Qualitative Assessment")
         st.markdown("Please answer the following questions about your dataset:")
-        
+
         for key, dimension in QUALITATIVE_DIMENSIONS.items():
             st.markdown(f"**{dimension['name']}**")
             st.markdown(f"*{dimension['definition']}*")
-            
+
             if key not in st.session_state.qualitative_scores:
                 st.session_state.qualitative_scores[key] = 1
-            
+
             current_score = st.session_state.qualitative_scores.get(key, 1)
             selected_index = current_score - 1 if current_score > 0 else 0
-            
+
             selected_option = st.radio(
                 dimension['question'],
                 options=dimension['options'],
                 key=f"qual_{key}",
                 index=selected_index
             )
-            
+
             score = int(selected_option[0])
             st.session_state.qualitative_scores[key] = score
-        
+
         st.markdown("---")
         st.subheader("Quantitative Check Configuration")
-        
+
+        data_columns = list(st.session_state.processed_data.columns)
+        available_target, available_age, available_other = get_use_case_specific_columns(
+            st.session_state.selected_use_case, data_columns)
+
         target_column = st.selectbox(
             "Select Target Column",
-            options=["None"] + list(st.session_state.processed_data.columns),
+            options=["None"] + (available_target if available_target else data_columns),
             help="Select the column to be used as the target variable for calculating population representativity.",
             key="target_column_selector"
         )
-        
+
         age_column = st.selectbox(
             "Select Age Column",
-            options=["None"] + list(st.session_state.processed_data.columns),
-            help="Select the column containing age data for accuracy checks (expected range: 1-120 years).",
+            options=["None"] + (available_age if available_age else data_columns),
+            help="Select the column containing age data for accuracy checks (expected range: 0-120 years).",
             key="age_column_selector"
         )
-        
-        height_column = st.selectbox(
-            "Select Height Column",
-            options=["None"] + list(st.session_state.processed_data.columns),
-            help="Select the column containing height data for accuracy checks (expected range: 50-240 cm).",
-            key="height_column_selector"
+
+        other_numeric_column = st.selectbox(
+            "Select Additional Numeric Column for Validation",
+            options=["None"] + (available_other if available_other else data_columns),
+            help="Select another numeric column for accuracy validation (ranges depend on use case).",
+            key="other_column_selector"
         )
-        
+
         st.session_state.target_column = target_column if target_column != "None" else None
         st.session_state.age_column = age_column if age_column != "None" else None
-        st.session_state.height_column = height_column if height_column != "None" else None
-        
+        st.session_state.other_column = other_numeric_column if other_numeric_column != "None" else None
+
         if st.button("Run Quality Checks", type="primary"):
             if all(score > 0 for score in st.session_state.qualitative_scores.values()):
                 use_case_config = USE_CASES[st.session_state.selected_use_case].copy()
-                
+
                 use_case_config["target_column"] = st.session_state.target_column
-                
-                expected_ranges = {}
-                if st.session_state.age_column:
-                    expected_ranges[st.session_state.age_column] = [1, 120]
-                if st.session_state.height_column:
-                    expected_ranges[st.session_state.height_column] = [50, 240]
-                
+
+                expected_ranges = use_case_config.get("expected_ranges", {}).copy()
+                if st.session_state.age_column and st.session_state.age_column not in expected_ranges:
+                    expected_ranges[st.session_state.age_column] = [0, 120]
+
                 use_case_config["expected_ranges"] = expected_ranges
                 use_case_config["age_column"] = st.session_state.age_column
-                use_case_config["height_column"] = st.session_state.height_column
-                
+                use_case_config["other_column"] = st.session_state.other_column
+
                 if not USE_CASES[st.session_state.selected_use_case]['implemented']:
-                    st.error(f"⚠️ {st.session_state.selected_use_case} is not yet implemented. Please select Use Case 4.")
+                    st.error(
+                        f"⚠️ {st.session_state.selected_use_case} is not yet implemented. Please select Use Case 1 or Use Case 4.")
                 else:
                     with st.spinner("Running quality checks..."):
                         check_results = run_all_checks(
-                            st.session_state.processed_data, 
-                            use_case_config, 
+                            st.session_state.processed_data,
+                            use_case_config,
                             st.session_state.metadata
                         )
                         st.session_state.ratings = get_ratings(check_results)
                         st.session_state.overall_rating = get_overall_rating(st.session_state.ratings)
-                        
-                        st.session_state.qualitative_ratings = calculate_qualitative_ratings(st.session_state.qualitative_scores)
-                        
+
+                        st.session_state.qualitative_ratings = calculate_qualitative_ratings(
+                            st.session_state.qualitative_scores)
+
                     st.success("Quality checks completed!")
             else:
                 st.error("Please complete all qualitative assessment questions before running quality checks!")
-        
+
         if st.session_state.ratings is not None and st.session_state.qualitative_ratings is not None:
             st.markdown("---")
             st.subheader("Quality Assessment Results")
-            
+
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 display_radar_chart(st.session_state.qualitative_ratings, "Qualitative Assessment")
                 qualitative_avg = np.mean([r[0] for r in st.session_state.qualitative_ratings.values()])
                 st.markdown(f"**Average Qualitative Score: {qualitative_avg:.1f}/5**")
-            
+
             with col2:
                 display_radar_chart(st.session_state.ratings, "Quantitative Assessment")
                 st.markdown(f"**Average Quantitative Score: {st.session_state.overall_rating:.1f}/5**")
-            
+
             total_avg = (qualitative_avg + st.session_state.overall_rating) / 2
             st.markdown("---")
             st.markdown(f"### Overall Data Quality Score: {total_avg:.1f}/5")
-            
+
             st.markdown("---")
             st.subheader("Detailed Qualitative Scores")
             display_metrics(st.session_state.qualitative_ratings, "Qualitative")
-            
+
             st.markdown("---")
             st.subheader("Detailed Quantitative Scores")
             display_metrics(st.session_state.ratings, "Quantitative")
-    
+
     else:
         st.info("Please upload a dataset and click 'Load Data' to begin.")
+
 
 if __name__ == "__main__":
     main()
