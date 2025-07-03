@@ -184,13 +184,13 @@ def display_metrics(ratings, metric_type="Quantitative"):
     }
 
     calculation_methods_images = {
-        "population_representativity": "Distribution balance of histology types from clinical data or images per patient distribution",
-        "metadata_granularity": "Combined score: (embedded DICOM metadata coverage + clinical metadata coverage + clinical data completeness) / 3",
-        "accuracy": "Combined score: (image quality checks + clinical data validation) / total checks performed",
-        "coherence": "Mean consistency score across image properties: spacing, orientation, size, and pixel type",
-        "semantic_coherence": "Combined score: (unique patient-series combinations + naming pattern consistency) / 2",
-        "completeness": "Combined score: (complete image volumes + clinical data completeness for key fields) / 2",
-        "relational_consistency": "Combined score: (unique images by file hash + patient ID format consistency) / 2"
+        "population_representativity": "Minority/majority class ratio from histology distribution (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
+        "metadata_granularity": "Patients with complete metadata / total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
+        "accuracy": "Combined score: slice dimension consistency + missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
+        "coherence": "Number of channels consistency across images (≤0.2 inconsistency = 5/5, ≥0.8 inconsistency = 1/5)",
+        "semantic_coherence": "Duplicate image detection using array hash comparison (≤0.2 duplication = 5/5, ≥0.8 duplication = 1/5)",
+        "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
+        "relational_consistency": "File duplication + patient ID format consistency (≤0.2 issues = 5/5, ≥0.8 issues = 1/5)"
     }
 
     rating_thresholds = """
@@ -654,6 +654,8 @@ def main():
         if st.session_state.ratings is not None and st.session_state.qualitative_ratings is not None:
             st.markdown("---")
             st.subheader("Quality Assessment Results")
+            if st.session_state.selected_use_case == "Use case 1":
+                st.info("📊 **Note**: UC1 quantitative scores follow SDQF guidelines. Specific thresholds (≤0.2, ≥0.8) determine 1-5 scale ratings.")
 
             col1, col2 = st.columns(2)
 

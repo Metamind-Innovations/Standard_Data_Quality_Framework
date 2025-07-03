@@ -63,7 +63,7 @@ def load_clinical_metadata(metadata_path=None):
 
 def check_population_representativity_images(image_paths, metadata=None):
     """
-    Check population representativity for image datasets using clinical metadata.
+    Check population representativity using minority/majority class ratio as per SDQF guidelines.
 
     :param image_paths: List of paths to NRRD image files
     :param metadata: Optional metadata DataFrame or path to CSV
@@ -99,23 +99,27 @@ def check_population_representativity_images(image_paths, metadata=None):
         if num_classes <= 1:
             return 0, "Only one histology type found in available data"
 
-        total_samples = len(available_clinical.dropna(subset=['Histology']))
-        ideal_proportion = 1.0 / num_classes
+        minority_class_count = histology_counts.min()
+        majority_class_count = histology_counts.max()
 
-        proportions = histology_counts / total_samples
-        deviations = abs(proportions - ideal_proportion)
-        max_deviation = deviations.max()
+        ratio = minority_class_count / majority_class_count
 
-        score = 1.0 - (max_deviation / (1.0 - ideal_proportion))
-        score = max(0, min(1, score))
+        if ratio <= 0.2:
+            score_rating = 1
+        elif ratio >= 0.8:
+            score_rating = 5
+        else:
+            score_rating = 1 + (ratio - 0.2) / 0.15
+            score_rating = min(5, max(1, score_rating))
+
+        score = (score_rating - 1) / 4
 
         class_details = []
         for class_name, count in histology_counts.items():
-            proportion = count / total_samples
-            class_details.append(f"'{class_name}': {count} samples ({proportion:.1%})")
+            class_details.append(f"'{class_name}': {count} samples")
 
         details_str = ", ".join(class_details)
-        return score, f"Found {num_classes} histology types across {len(available_clinical)} patients with images. Distribution: {details_str}"
+        return score, f"Minority/majority ratio: {ratio:.3f}. Classes: {details_str}. Rating: {score_rating:.1f}/5"
 
     else:
         # Fallback to patient image count distribution
@@ -124,23 +128,31 @@ def check_population_representativity_images(image_paths, metadata=None):
             patient_id = extract_patient_id_from_path(path)
             patient_counts[patient_id] += 1
 
-        num_patients = len(patient_counts)
-        if num_patients == 0:
+        if len(patient_counts) == 0:
             return 0, "No patients found"
 
         image_counts = list(patient_counts.values())
-        avg_images = np.mean(image_counts)
-        std_dev = np.std(image_counts)
-        cv = std_dev / avg_images if avg_images > 0 else 0
+        min_images = min(image_counts)
+        max_images = max(image_counts)
 
-        # Score based on coefficient of variation (lower CV = better balance)
-        score = max(0, 1 - cv)
-        return score, f"Found {num_patients} patients with {len(image_paths)} total images. Average {avg_images:.1f} images per patient (CV: {cv:.2f})"
+        ratio = min_images / max_images if max_images > 0 else 0
+
+        if ratio <= 0.2:
+            score_rating = 1
+        elif ratio >= 0.8:
+            score_rating = 5
+        else:
+            score_rating = 1 + (ratio - 0.2) / 0.15
+            score_rating = min(5, max(1, score_rating))
+
+        score = (score_rating - 1) / 4
+
+        return score, f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient. Rating: {score_rating:.1f}/5"
 
 
 def check_metadata_granularity_images(image_paths, metadata=None):
     """
-    Check metadata availability for image datasets.
+    Check metadata granularity based on patients with metadata / total patients ratio.
 
     :param image_paths: List of paths to NRRD image files
     :param metadata: Optional metadata DataFrame or path to CSV
@@ -150,21 +162,12 @@ def check_metadata_granularity_images(image_paths, metadata=None):
     if not image_paths:
         return 0, "No image files found"
 
-    # Check embedded DICOM metadata in images
-    total_images = len(image_paths)
-    images_with_metadata = 0
-
+    image_patient_ids = set()
     for path in image_paths:
-        try:
-            image = sitk.ReadImage(path)
-            metadata_keys = image.GetMetaDataKeys()
-            # Consider meaningful metadata (more than just basic image info)
-            if len(metadata_keys) > 5:
-                images_with_metadata += 1
-        except:
-            continue
+        patient_id = extract_patient_id_from_path(path)
+        image_patient_ids.add(patient_id)
 
-    embedded_ratio = images_with_metadata / total_images
+    total_patients = len(image_patient_ids)
 
     # Load clinical metadata if available
     if metadata is None or isinstance(metadata, str):
@@ -173,32 +176,35 @@ def check_metadata_granularity_images(image_paths, metadata=None):
         clinical_data = metadata
 
     if clinical_data is not None:
-        # Check clinical metadata coverage
-        image_patient_ids = set()
-        for path in image_paths:
-            patient_id = extract_patient_id_from_path(path)
-            image_patient_ids.add(patient_id)
+        patients_with_metadata = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
+        patients_with_complete_metadata = 0
 
-        patients_with_clinical = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
-        clinical_coverage = len(patients_with_clinical) / len(image_patient_ids) if len(image_patient_ids) > 0 else 0
+        for _, patient_row in patients_with_metadata.iterrows():
+            non_na_fields = patient_row.notna().sum()
+            total_fields = len(patient_row)
+            if non_na_fields / total_fields >= 0.5:
+                patients_with_complete_metadata += 1
 
-        # Check completeness of clinical data
-        clinical_completeness = 0
-        if len(patients_with_clinical) > 0:
-            non_na_counts = patients_with_clinical.count()
-            total_fields = len(patients_with_clinical.columns)
-            clinical_completeness = non_na_counts.mean() / len(patients_with_clinical)
+        ratio = patients_with_complete_metadata / total_patients if total_patients > 0 else 0
 
-        combined_score = (embedded_ratio + clinical_coverage + clinical_completeness) / 3
+        if ratio <= 0.2:
+            score_rating = 1
+        elif ratio >= 0.8:
+            score_rating = 5
+        else:
+            score_rating = 1 + (ratio - 0.2) / 0.15
+            score_rating = min(5, max(1, score_rating))
 
-        return combined_score, f"Embedded metadata: {images_with_metadata}/{total_images} images ({embedded_ratio:.1%}). Clinical metadata: {len(patients_with_clinical)}/{len(image_patient_ids)} patients ({clinical_coverage:.1%}). Clinical completeness: {clinical_completeness:.1%}"
+        score = (score_rating - 1) / 4
+
+        return score, f"Patients with metadata: {patients_with_complete_metadata}/{total_patients} ({ratio:.1%}). Rating: {score_rating:.1f}/5"
     else:
-        return embedded_ratio, f"Embedded metadata only: {images_with_metadata}/{total_images} images ({embedded_ratio:.1%}). No clinical metadata found"
+        return 0, "No clinical metadata available"
 
 
 def check_accuracy_images(image_paths, metadata=None):
     """
-    Check accuracy of image data including clinical data validation.
+    Check accuracy focusing on slice dimensions consistency and missing slices.
 
     :param image_paths: List of paths to NRRD image files
     :param metadata: Optional metadata DataFrame or path to CSV
@@ -208,227 +214,179 @@ def check_accuracy_images(image_paths, metadata=None):
     if not image_paths:
         return 0, "No image files found"
 
-    total_checks = 0
-    passed_checks = 0
-    issues = []
+    dimension_consistency_issues = 0
+    missing_slices_total = 0
+    total_expected_slices = 0
+    total_volumes = 0
+    dimension_groups = {}
 
-    expected_hu_range = (-1024, 3071)
-    expected_spacing_range = (0.5, 5.0)
-    expected_dim_range = (64, 1024)
+    for path in image_paths:
+        try:
+            image = sitk.ReadImage(path)
+            size = image.GetSize()
+            slice_dimensions = (size[0], size[1])
+
+            if slice_dimensions not in dimension_groups:
+                dimension_groups[slice_dimensions] = 0
+            dimension_groups[slice_dimensions] += 1
+
+            array = sitk.GetArrayFromImage(image)
+            if len(array.shape) == 3:
+                num_slices = array.shape[0]
+                total_expected_slices += num_slices
+
+                slice_sums = np.sum(array, axis=(1, 2))
+                missing_slices = np.sum(slice_sums == 0)
+                missing_slices_total += missing_slices
+
+                total_volumes += 1
+        except Exception:
+            dimension_consistency_issues += 1
+            continue
+
+    if total_volumes == 0:
+        return 0, "No valid image volumes found"
+
+    most_common_dimensions = max(dimension_groups, key=dimension_groups.get)
+    images_with_different_dimensions = sum(
+        count for dims, count in dimension_groups.items() if dims != most_common_dimensions)
+
+    dimension_inconsistency_ratio = images_with_different_dimensions / len(image_paths)
+    missing_slices_ratio = missing_slices_total / total_expected_slices if total_expected_slices > 0 else 0
+
+    combined_error_ratio = (dimension_inconsistency_ratio + missing_slices_ratio) / 2
+
+    if combined_error_ratio <= 0.2:
+        score_rating = 5
+    elif combined_error_ratio >= 0.8:
+        score_rating = 1
+    else:
+        score_rating = 5 - (combined_error_ratio - 0.2) / 0.15
+        score_rating = min(5, max(1, score_rating))
+
+    score = (score_rating - 1) / 4
+
+    return score, f"Dimension consistency: {len(image_paths) - images_with_different_dimensions}/{len(image_paths)} images have consistent dimensions. Missing slices: {missing_slices_total}/{total_expected_slices} ({missing_slices_ratio:.1%}). Combined error ratio: {combined_error_ratio:.3f}. Rating: {score_rating:.1f}/5"
+
+
+def check_coherence_images(image_paths):
+    """
+    Check coherence focusing on consistent number of channels across images.
+
+    :param image_paths: List of paths to NRRD image files
+    :return: Tuple of (score, explanation)
+    :rtype: tuple
+    """
+    if not image_paths:
+        return 0, "No image files found"
+
+    channel_counts = {}
+    total_images = 0
+    processing_errors = 0
+
+    for path in image_paths:
+        try:
+            image = sitk.ReadImage(path)
+
+            if image.GetNumberOfComponentsPerPixel() == 1:
+                channels = 1
+            else:
+                channels = image.GetNumberOfComponentsPerPixel()
+
+            if channels not in channel_counts:
+                channel_counts[channels] = 0
+            channel_counts[channels] += 1
+            total_images += 1
+
+        except Exception:
+            processing_errors += 1
+            continue
+
+    if total_images == 0:
+        return 0, "No valid images found for channel analysis"
+
+    most_common_channels = max(channel_counts, key=channel_counts.get) if channel_counts else 1
+    images_with_different_channels = sum(
+        count for channels, count in channel_counts.items() if channels != most_common_channels)
+
+    inconsistency_ratio = images_with_different_channels / total_images
+
+    if inconsistency_ratio <= 0.2:
+        score_rating = 5
+    elif inconsistency_ratio >= 0.8:
+        score_rating = 1
+    else:
+        score_rating = 5 - (inconsistency_ratio - 0.2) / 0.15
+        score_rating = min(5, max(1, score_rating))
+
+    score = (score_rating - 1) / 4
+
+    channel_details = []
+    for channels, count in channel_counts.items():
+        channel_details.append(f"{channels} channel(s): {count} images")
+
+    details_str = ", ".join(channel_details)
+
+    return score, f"Channel consistency: {total_images - images_with_different_channels}/{total_images} images have consistent channels ({most_common_channels} channels). Distribution: {details_str}. Inconsistency ratio: {inconsistency_ratio:.3f}. Rating: {score_rating:.1f}/5"
+
+
+def check_semantic_coherence_images(image_paths):
+    """
+    Check semantic coherence by detecting duplicate images/slices.
+
+    :param image_paths: List of paths to NRRD image files
+    :return: Tuple of (score, explanation)
+    :rtype: tuple
+    """
+    if not image_paths:
+        return 0, "No image files found"
+
+    image_hashes = {}
+    total_images = len(image_paths)
+    duplicate_images = 0
+    processing_errors = 0
 
     for path in image_paths:
         try:
             image = sitk.ReadImage(path)
             array = sitk.GetArrayFromImage(image)
-            spacing = image.GetSpacing()
-            size = image.GetSize()
 
-            total_checks += 4
+            array_bytes = array.tobytes()
+            image_hash = hashlib.md5(array_bytes).hexdigest()
 
-            # HU value range check
-            if expected_hu_range[0] <= array.min() and array.max() <= expected_hu_range[1]:
-                passed_checks += 1
+            if image_hash in image_hashes:
+                duplicate_images += 1
             else:
-                issues.append(f"{Path(path).name}: HU values outside expected range")
-
-            # Pixel spacing check
-            spacing_check = all(expected_spacing_range[0] <= s <= expected_spacing_range[1] for s in spacing[:2])
-            if spacing_check:
-                passed_checks += 1
-            else:
-                issues.append(f"{Path(path).name}: Pixel spacing outside expected range")
-
-            # Slice thickness check
-            if expected_spacing_range[0] <= spacing[2] <= expected_spacing_range[1]:
-                passed_checks += 1
-            else:
-                issues.append(f"{Path(path).name}: Slice thickness outside expected range")
-
-            # Dimension check
-            dim_check = all(expected_dim_range[0] <= d <= expected_dim_range[1] for d in size)
-            if dim_check:
-                passed_checks += 1
-            else:
-                issues.append(f"{Path(path).name}: Image dimensions outside expected range")
+                image_hashes[image_hash] = path
 
         except Exception:
-            issues.append(f"{Path(path).name}: Error reading image")
-
-    # Clinical data accuracy checks
-    if metadata is None or isinstance(metadata, str):
-        clinical_data = load_clinical_metadata(metadata)
-    else:
-        clinical_data = metadata
-
-    if clinical_data is not None:
-        clinical_checks = 0
-        clinical_passed = 0
-
-        # Age range check
-        if 'age' in clinical_data.columns:
-            age_data = pd.to_numeric(clinical_data['age'], errors='coerce').dropna()
-            clinical_checks += len(age_data)
-            clinical_passed += ((age_data >= 0) & (age_data <= 120)).sum()
-
-        # Survival time check
-        if 'Survival.time' in clinical_data.columns:
-            survival_data = pd.to_numeric(clinical_data['Survival.time'], errors='coerce').dropna()
-            clinical_checks += len(survival_data)
-            clinical_passed += ((survival_data >= 0) & (survival_data <= 10000)).sum()
-
-        # Stage consistency check
-        stage_columns = ['clinical.T.Stage', 'Clinical.N.Stage', 'Clinical.M.Stage']
-        for col in stage_columns:
-            if col in clinical_data.columns:
-                stage_data = pd.to_numeric(clinical_data[col], errors='coerce').dropna()
-                clinical_checks += len(stage_data)
-                if 'T.Stage' in col:
-                    clinical_passed += ((stage_data >= 1) & (stage_data <= 5)).sum()
-                elif 'N.Stage' in col:
-                    clinical_passed += ((stage_data >= 0) & (stage_data <= 4)).sum()
-                elif 'M.Stage' in col:
-                    clinical_passed += ((stage_data >= 0) & (stage_data <= 3)).sum()
-
-        total_checks += clinical_checks
-        passed_checks += clinical_passed
-
-    accuracy_ratio = passed_checks / total_checks if total_checks > 0 else 0
-
-    if issues:
-        issues_summary = "; ".join(issues[:3])
-        if len(issues) > 3:
-            issues_summary += f" and {len(issues) - 3} more issues"
-        return accuracy_ratio, f"Accuracy checks: {passed_checks}/{total_checks} passed ({accuracy_ratio:.1%}). Issues: {issues_summary}"
-    else:
-        return accuracy_ratio, f"All accuracy checks passed: {passed_checks}/{total_checks} ({accuracy_ratio:.1%})"
-
-
-def check_coherence_images(image_paths):
-    """
-    Check coherence of image properties across the dataset.
-
-    :param image_paths: List of paths to NRRD image files
-    :return: Tuple of (score, explanation)
-    :rtype: tuple
-    """
-    if not image_paths:
-        return 0, "No image files found"
-
-    properties = {
-        'spacing': [],
-        'direction': [],
-        'size': [],
-        'pixel_type': []
-    }
-
-    for path in image_paths:
-        try:
-            image = sitk.ReadImage(path)
-            # Round spacing to avoid minor floating point differences
-            spacing = tuple(round(s, 2) for s in image.GetSpacing())
-            properties['spacing'].append(spacing)
-            properties['direction'].append(image.GetDirection())
-            properties['size'].append(image.GetSize())
-            properties['pixel_type'].append(image.GetPixelIDTypeAsString())
-        except:
+            processing_errors += 1
             continue
 
-    coherence_scores = {}
+    if total_images - processing_errors == 0:
+        return 0, "No valid images found for duplicate analysis"
 
-    # Spacing coherence
-    unique_spacings = len(set(properties['spacing']))
-    coherence_scores['spacing'] = 1.0 if unique_spacings <= 2 else max(0.2, 2.0 / unique_spacings)
+    valid_images = total_images - processing_errors
+    duplication_ratio = duplicate_images / valid_images
 
-    # Direction coherence
-    unique_directions = len(set(properties['direction']))
-    coherence_scores['direction'] = 1.0 if unique_directions == 1 else max(0.2, 1.0 / unique_directions)
-
-    # Size coherence (some variation is acceptable for medical images)
-    unique_sizes = len(set(properties['size']))
-    coherence_scores['size'] = 1.0 if unique_sizes <= 3 else max(0.2, 3.0 / unique_sizes)
-
-    # Pixel type coherence
-    unique_types = len(set(properties['pixel_type']))
-    coherence_scores['pixel_type'] = 1.0 if unique_types == 1 else max(0.2, 1.0 / unique_types)
-
-    overall_coherence = np.mean(list(coherence_scores.values()))
-
-    issues = []
-    if unique_spacings > 2:
-        issues.append(f"{unique_spacings} different spacings")
-    if unique_directions > 1:
-        issues.append(f"{unique_directions} different orientations")
-    if unique_sizes > 3:
-        issues.append(f"{unique_sizes} different image sizes")
-    if unique_types > 1:
-        issues.append(f"{unique_types} different pixel types")
-
-    if issues:
-        return overall_coherence, f"Coherence score: {overall_coherence:.2f}. Inconsistencies: {', '.join(issues)}"
+    if duplication_ratio <= 0.2:
+        score_rating = 5
+    elif duplication_ratio >= 0.8:
+        score_rating = 1
     else:
-        return overall_coherence, f"Good coherence across all image properties (score: {overall_coherence:.2f})"
+        score_rating = 5 - (duplication_ratio - 0.2) / 0.15
+        score_rating = min(5, max(1, score_rating))
 
+    score = (score_rating - 1) / 4
 
-def check_semantic_coherence_images(image_paths):
-    """
-    Check for semantic coherence including duplicate patient IDs and naming consistency.
+    unique_images = valid_images - duplicate_images
 
-    :param image_paths: List of paths to NRRD image files
-    :return: Tuple of (score, explanation)
-    :rtype: tuple
-    """
-    if not image_paths:
-        return 0, "No image files found"
-
-    patient_series = []
-    naming_patterns = []
-
-    for path in image_paths:
-        patient_id = extract_patient_id_from_path(path)
-        series_type = Path(path).stem
-        patient_series.append((patient_id, series_type))
-
-        # Check naming pattern consistency
-        filename = Path(path).name
-        if 'image' in filename.lower():
-            naming_patterns.append('image')
-        elif 'volume' in filename.lower():
-            naming_patterns.append('volume')
-        else:
-            naming_patterns.append('other')
-
-    # Check for duplicate patient-series combinations
-    total_entries = len(patient_series)
-    unique_entries = len(set(patient_series))
-    duplicates = total_entries - unique_entries
-
-    # Check naming consistency
-    pattern_counts = Counter(naming_patterns)
-    dominant_pattern_count = max(pattern_counts.values())
-    naming_consistency = dominant_pattern_count / len(naming_patterns)
-
-    # Combined score
-    duplication_score = unique_entries / total_entries if total_entries > 0 else 1.0
-    overall_score = (duplication_score + naming_consistency) / 2
-
-    issues = []
-    if duplicates > 0:
-        duplicate_counts = Counter(patient_series)
-        duplicate_details = [(k, v) for k, v in duplicate_counts.items() if v > 1]
-        issues.append(f"{duplicates} duplicate patient-series combinations")
-
-    if naming_consistency < 0.8:
-        issues.append(f"Inconsistent naming patterns: {dict(pattern_counts)}")
-
-    if issues:
-        return overall_score, f"Semantic coherence issues found: {'; '.join(issues)}. Score: {overall_score:.2f}"
-    else:
-        return overall_score, f"Good semantic coherence. All {total_entries} entries unique with consistent naming (score: {overall_score:.2f})"
+    return score, f"Duplicate detection: {duplicate_images}/{valid_images} images are duplicates ({duplication_ratio:.1%}). Unique images: {unique_images}. Duplication ratio: {duplication_ratio:.3f}. Rating: {score_rating:.1f}/5"
 
 
 def check_completeness_images(image_paths, metadata=None):
     """
-    Check completeness of image volumes and associated clinical data.
+    Check completeness by calculating missing pixels / total pixels ratio.
 
     :param image_paths: List of paths to NRRD image files
     :param metadata: Optional metadata DataFrame or path to CSV
@@ -438,9 +396,9 @@ def check_completeness_images(image_paths, metadata=None):
     if not image_paths:
         return 0, "No image files found"
 
-    total_volumes = len(image_paths)
-    complete_volumes = 0
-    issues = []
+    total_pixels = 0
+    missing_pixels = 0
+    processing_errors = 0
 
     # Check image completeness
     for path in image_paths:
@@ -448,76 +406,37 @@ def check_completeness_images(image_paths, metadata=None):
             image = sitk.ReadImage(path)
             array = sitk.GetArrayFromImage(image)
 
-            if len(array.shape) != 3:
-                issues.append(f"{Path(path).name}: Not a 3D volume")
-                continue
+            current_total_pixels = array.size
+            total_pixels += current_total_pixels
 
-            num_slices = array.shape[0]
-            if num_slices < 10:
-                issues.append(f"{Path(path).name}: Only {num_slices} slices")
-                continue
-
-            # Check for empty slices
-            slice_sums = np.sum(array, axis=(1, 2))
-            empty_slices = np.sum(slice_sums == 0)
-            if empty_slices > num_slices * 0.2:
-                issues.append(f"{Path(path).name}: {empty_slices}/{num_slices} empty slices")
-                continue
-
-            # Check for reasonable HU value distribution
-            non_air_voxels = array[array > -900]
-            if len(non_air_voxels) < array.size * 0.1:
-                issues.append(f"{Path(path).name}: Too few non-air voxels")
-                continue
-
-            complete_volumes += 1
+            current_missing_pixels = np.sum(array == 0)
+            missing_pixels += current_missing_pixels
 
         except Exception:
-            issues.append(f"{Path(path).name}: Cannot read file")
+            processing_errors += 1
+            continue
 
-    image_completeness = complete_volumes / total_volumes if total_volumes > 0 else 0
+    if total_pixels == 0:
+        return 0, "No valid pixels found for completeness analysis"
 
-    # Check clinical data completeness
-    if metadata is None or isinstance(metadata, str):
-        clinical_data = load_clinical_metadata(metadata)
+    missing_ratio = missing_pixels / total_pixels
+
+    if missing_ratio <= 0.2:
+        score_rating = 5
+    elif missing_ratio >= 0.8:
+        score_rating = 1
     else:
-        clinical_data = metadata
+        score_rating = 5 - (missing_ratio - 0.2) / 0.15
+        score_rating = min(5, max(1, score_rating))
 
-    clinical_completeness = 1.0  # Default if no clinical data
-    if clinical_data is not None:
-        image_patient_ids = set()
-        for path in image_paths:
-            patient_id = extract_patient_id_from_path(path)
-            image_patient_ids.add(patient_id)
+    score = (score_rating - 1) / 4
 
-        patients_with_clinical = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
-
-        if len(patients_with_clinical) > 0:
-            # Calculate completeness for key clinical fields
-            key_fields = ['age', 'gender', 'Histology', 'Overall.Stage']
-            available_fields = [f for f in key_fields if f in clinical_data.columns]
-
-            if available_fields:
-                field_completeness = []
-                for field in available_fields:
-                    non_na_count = patients_with_clinical[field].notna().sum()
-                    field_completeness.append(non_na_count / len(patients_with_clinical))
-                clinical_completeness = np.mean(field_completeness)
-
-    overall_completeness = (image_completeness + clinical_completeness) / 2
-
-    if issues:
-        issues_summary = "; ".join(issues[:3])
-        if len(issues) > 3:
-            issues_summary += f" and {len(issues) - 3} more issues"
-        return overall_completeness, f"Image completeness: {complete_volumes}/{total_volumes} ({image_completeness:.1%}). Clinical completeness: {clinical_completeness:.1%}. Issues: {issues_summary}"
-    else:
-        return overall_completeness, f"High completeness. Images: {complete_volumes}/{total_volumes} ({image_completeness:.1%}). Clinical: {clinical_completeness:.1%}"
+    return score, f"Pixel completeness: {total_pixels - missing_pixels}/{total_pixels} pixels are non-zero ({(1 - missing_ratio):.1%} complete). Missing pixels ratio: {missing_ratio:.3f}. Rating: {score_rating:.1f}/5"
 
 
 def check_relational_consistency_images(image_paths):
     """
-    Check for duplicate images and patient ID consistency.
+    Check relational consistency by detecting duplicate files and patient ID consistency.
 
     :param image_paths: List of paths to NRRD image files
     :return: Tuple of (score, explanation)
@@ -528,7 +447,8 @@ def check_relational_consistency_images(image_paths):
 
     file_hashes = {}
     duplicates = []
-    patient_consistency_issues = []
+    patient_consistency_issues = 0
+    total_files = len(image_paths)
 
     for path in image_paths:
         try:
@@ -544,41 +464,46 @@ def check_relational_consistency_images(image_paths):
             # Check patient ID consistency in path structure
             patient_id = extract_patient_id_from_path(path)
             if not patient_id.startswith('LUNG1-'):
-                patient_consistency_issues.append(f"{Path(path).name}: Inconsistent patient ID format")
+                patient_consistency_issues += 1
 
         except Exception:
             continue
 
-    total_files = len(image_paths)
-    unique_files = len(file_hashes)
-    duplicate_count = total_files - unique_files
+    duplicate_count = len(duplicates)
+    duplicate_ratio = duplicate_count / total_files
+    inconsistency_ratio = patient_consistency_issues / total_files
 
-    # Calculate consistency scores
-    duplication_score = unique_files / total_files if total_files > 0 else 1.0
-    consistency_score = (total_files - len(patient_consistency_issues)) / total_files if total_files > 0 else 1.0
+    combined_issues_ratio = (duplicate_ratio + inconsistency_ratio) / 2
 
-    overall_consistency = (duplication_score + consistency_score) / 2
+    if combined_issues_ratio <= 0.2:
+        score_rating = 5
+    elif combined_issues_ratio >= 0.8:
+        score_rating = 1
+    else:
+        score_rating = 5 - (combined_issues_ratio - 0.2) / 0.15
+        score_rating = min(5, max(1, score_rating))
+
+    score = (score_rating - 1) / 4
+
+    unique_files = total_files - duplicate_count
+    consistent_patient_ids = total_files - patient_consistency_issues
 
     issues = []
     if duplicate_count > 0:
-        dup_examples = [f"{Path(d[0]).name} = {Path(d[1]).name}" for d in duplicates[:2]]
-        examples_str = ", ".join(dup_examples)
-        if len(duplicates) > 2:
-            examples_str += f" and {len(duplicates) - 2} more"
-        issues.append(f"{duplicate_count} duplicate images: {examples_str}")
-
-    if patient_consistency_issues:
-        issues.append(f"{len(patient_consistency_issues)} patient ID format issues")
+        issues.append(f"{duplicate_count} duplicate files")
+    if patient_consistency_issues > 0:
+        issues.append(f"{patient_consistency_issues} patient ID format issues")
 
     if issues:
-        return overall_consistency, f"Relational consistency issues: {'; '.join(issues)}. Score: {overall_consistency:.2f}"
+        issues_str = ", ".join(issues)
+        return score, f"Relational consistency issues: {issues_str}. Unique files: {unique_files}/{total_files}. Consistent patient IDs: {consistent_patient_ids}/{total_files}. Combined issues ratio: {combined_issues_ratio:.3f}. Rating: {score_rating:.1f}/5"
     else:
-        return overall_consistency, f"Good relational consistency. All {total_files} images unique with consistent IDs (score: {overall_consistency:.2f})"
+        return score, f"Good relational consistency. All {total_files} files unique with consistent patient IDs. Rating: {score_rating:.1f}/5"
 
 
 def run_all_checks_images(image_paths, metadata=None):
     """
-    Run all quantitative checks for image datasets with enhanced clinical integration.
+    Run all quantitative checks for image datasets following SDQF guidelines.
 
     :param image_paths: List of paths to NRRD image files
     :param metadata: Optional metadata DataFrame or path to CSV

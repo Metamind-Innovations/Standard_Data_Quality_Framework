@@ -30,32 +30,39 @@ USE_CASES = {
         "target_column": "deadstatus.event",
         "image_quality_checks": {
             "population_representativity": {
-                "description": "Distribution balance of histology types from clinical data or patient image distribution",
-                "method": "histology_distribution_analysis"
+                "description": "Minority/majority class ratio from histology distribution or patient image count balance",
+                "method": "minority_majority_ratio_analysis",
+                "sdqf_rating": "≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5"
             },
             "metadata_granularity": {
-                "description": "Combined assessment of embedded DICOM metadata and clinical data coverage",
-                "method": "metadata_coverage_analysis"
+                "description": "Patients with complete metadata / total patients ratio",
+                "method": "metadata_coverage_ratio_analysis",
+                "sdqf_rating": "≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5"
             },
             "accuracy": {
-                "description": "Image quality validation (HU ranges, spacing, dimensions) and clinical data accuracy",
-                "method": "combined_validation_checks"
+                "description": "CT-scan slice dimension consistency and missing slice detection",
+                "method": "slice_consistency_and_completeness_analysis",
+                "sdqf_rating": "≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5"
             },
             "coherence": {
-                "description": "Consistency of image properties across the dataset",
-                "method": "image_property_consistency"
+                "description": "Consistent number of channels across all images (grayscale vs RGB)",
+                "method": "channel_consistency_analysis",
+                "sdqf_rating": "≤0.2 inconsistency ratio = 5/5, ≥0.8 inconsistency ratio = 1/5"
             },
             "semantic_coherence": {
-                "description": "Patient ID consistency and naming pattern validation",
-                "method": "semantic_validation"
+                "description": "Duplicate image detection using array hash comparison",
+                "method": "image_duplicate_detection",
+                "sdqf_rating": "≤0.2 duplication ratio = 5/5, ≥0.8 duplication ratio = 1/5"
             },
             "completeness": {
-                "description": "Image volume completeness and clinical data availability",
-                "method": "data_completeness_analysis"
+                "description": "Missing pixels / total pixels ratio across all images",
+                "method": "pixel_completeness_analysis",
+                "sdqf_rating": "≤0.2 missing ratio = 5/5, ≥0.8 missing ratio = 1/5"
             },
             "relational_consistency": {
-                "description": "Duplicate detection and patient ID format consistency",
-                "method": "relationship_validation"
+                "description": "File duplication and patient ID format consistency checks",
+                "method": "file_and_id_consistency_validation",
+                "sdqf_rating": "≤0.2 issues ratio = 5/5, ≥0.8 issues ratio = 1/5"
             }
         },
         "clinical_metadata_file": "NSCLC-Radiomics-Lung1.clinical-version3-Oct-2019.csv",
