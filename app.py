@@ -1,8 +1,10 @@
 import glob
 import json
 import os
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -10,8 +12,7 @@ from config.use_case_config import USE_CASES
 from src.data_loader import load_data, load_metadata, save_example_data
 from src.quality_checks import run_all_checks
 from src.rating import get_ratings, get_overall_rating
-from src.uc1_image_quality_checks import run_all_checks_images
-from pathlib import Path
+from src.uc1_image_quality_checks import run_all_checks_images, extract_patient_id_from_path
 
 st.set_page_config(
     page_title="Standard Data Quality Framework",
@@ -183,13 +184,13 @@ def display_metrics(ratings, metric_type="Quantitative"):
     }
 
     calculation_methods_images = {
-        "population_representativity": "Distribution balance of histology types or images per patient",
-        "metadata_granularity": "images with metadata / total images",
-        "accuracy": "images passing HU range, spacing, and dimension checks / total checks",
-        "coherence": "consistency score across image properties (spacing, orientation, size, pixel type)",
-        "semantic_coherence": "unique patient-series combinations / total combinations",
-        "completeness": "complete volumes without missing slices / total volumes",
-        "relational_consistency": "unique images / total images (based on file hash)"
+        "population_representativity": "Distribution balance of histology types from clinical data or images per patient distribution",
+        "metadata_granularity": "Combined score: (embedded DICOM metadata coverage + clinical metadata coverage + clinical data completeness) / 3",
+        "accuracy": "Combined score: (image quality checks + clinical data validation) / total checks performed",
+        "coherence": "Mean consistency score across image properties: spacing, orientation, size, and pixel type",
+        "semantic_coherence": "Combined score: (unique patient-series combinations + naming pattern consistency) / 2",
+        "completeness": "Combined score: (complete image volumes + clinical data completeness for key fields) / 2",
+        "relational_consistency": "Combined score: (unique images by file hash + patient ID format consistency) / 2"
     }
 
     rating_thresholds = """
@@ -326,7 +327,11 @@ def load_nrrd_directory(directory_path):
     for pattern in patterns:
         nrrd_files.extend(glob.glob(pattern, recursive=True))
 
+    # Prioritize image files over mask files
     image_files = [f for f in nrrd_files if 'image' in os.path.basename(f).lower()]
+    if not image_files:
+        # If no specific image files, take all NRRD files
+        image_files = nrrd_files
 
     return image_files
 
@@ -369,9 +374,13 @@ def main():
             help="Enter the path to the directory containing NRRD image files"
         )
 
-        uploaded_metadata = st.sidebar.file_uploader("Upload metadata CSV (optional)", type="csv")
+        uploaded_clinical_csv = st.sidebar.file_uploader(
+            "Upload clinical CSV file (optional)",
+            type="csv",
+            help="Upload NSCLC-Radiomics clinical CSV file for enhanced analysis"
+        )
 
-        if st.sidebar.button("Load Image Data"):
+        if st.sidebar.button("Load Data"):
             if os.path.exists(nrrd_directory):
                 image_paths = load_nrrd_directory(nrrd_directory)
                 if image_paths:
@@ -379,13 +388,22 @@ def main():
                     st.session_state.nrrd_directory = nrrd_directory
                     st.session_state.selected_use_case = selected_use_case
 
-                    if uploaded_metadata is not None:
+                    # Try to load clinical metadata from uploaded file
+                    if uploaded_clinical_csv is not None:
                         try:
-                            st.session_state.metadata = load_metadata(uploaded_metadata)
+                            clinical_data = load_metadata(uploaded_clinical_csv)
+                            if clinical_data is not None:
+                                st.session_state.metadata = clinical_data
+                                st.success(
+                                    f"Loaded {len(image_paths)} image files and clinical data for {len(clinical_data)} patients!")
+                            else:
+                                st.warning(f"Loaded {len(image_paths)} image files but could not load clinical data.")
                         except Exception as e:
-                            st.error(f"Error loading metadata: {str(e)}")
-
-                    st.success(f"Loaded {len(image_paths)} image files successfully!")
+                            st.error(f"Error loading clinical metadata: {str(e)}")
+                            st.success(f"Loaded {len(image_paths)} image files (without clinical data)")
+                    else:
+                        st.session_state.metadata = None
+                        st.success(f"Loaded {len(image_paths)} image files (no clinical data provided)")
                 else:
                     st.error("No NRRD/MHA files found in the specified directory!")
             else:
@@ -425,17 +443,89 @@ def main():
 
             patient_ids = set()
             for path in st.session_state.image_paths:
-                patient_id = Path(path).parent.name.split('_')[0]
+                patient_id = extract_patient_id_from_path(path)
                 patient_ids.add(patient_id)
 
             st.write(f"**Number of patients:** {len(patient_ids)}")
             st.write(f"**Average images per patient:** {len(st.session_state.image_paths) / len(patient_ids):.1f}")
+
+            if st.session_state.metadata is not None:
+                st.write(f"**Clinical metadata available for:** {len(st.session_state.metadata)} patients")
+
+                # Show clinical data coverage
+                clinical_patient_ids = set(st.session_state.metadata['PatientID'].tolist())
+                coverage = len(patient_ids.intersection(clinical_patient_ids)) / len(patient_ids) * 100
+                st.write(f"**Clinical data coverage:** {coverage:.1f}% of image patients")
 
             with st.expander("Sample image paths"):
                 for i, path in enumerate(st.session_state.image_paths[:10]):
                     st.text(f"{i + 1}. {Path(path).name}")
                 if len(st.session_state.image_paths) > 10:
                     st.text(f"... and {len(st.session_state.image_paths) - 10} more files")
+
+            # Clinical Data Overview Section
+            if st.session_state.metadata is not None:
+                st.subheader("Clinical Data Overview")
+
+                # Basic statistics
+                total_patients = len(st.session_state.metadata)
+                total_columns = len(st.session_state.metadata.columns)
+                st.write(f"**Total patients in clinical data:** {total_patients}")
+                st.write(f"**Total clinical fields:** {total_columns}")
+
+                # Data completeness analysis
+                non_missing_counts = st.session_state.metadata.count()
+                overall_completeness = (non_missing_counts.sum() / (total_patients * total_columns)) * 100
+                st.write(f"**Overall data completeness:** {overall_completeness:.1f}%")
+
+                # Key field analysis
+                key_fields = ['age', 'gender', 'Histology', 'Overall.Stage', 'Survival.time', 'deadstatus.event']
+                available_key_fields = [field for field in key_fields if field in st.session_state.metadata.columns]
+
+                if available_key_fields:
+                    st.write(f"**Key fields available:** {len(available_key_fields)}/{len(key_fields)}")
+
+                    # Show completeness for key fields
+                    key_field_completeness = []
+                    for field in available_key_fields:
+                        completeness = (st.session_state.metadata[field].count() / total_patients) * 100
+                        key_field_completeness.append(f"{field}: {completeness:.1f}%")
+
+                    st.write(f"**Key field completeness:** {', '.join(key_field_completeness[:3])}")
+                    if len(key_field_completeness) > 3:
+                        st.write(f"**Additional fields:** {', '.join(key_field_completeness[3:])}")
+
+                # Histology distribution
+                if 'Histology' in st.session_state.metadata.columns:
+                    histology_counts = st.session_state.metadata['Histology'].value_counts()
+                    most_common = histology_counts.head(3)
+                    histology_summary = []
+                    for hist_type, count in most_common.items():
+                        if pd.notna(hist_type):
+                            percentage = (count / total_patients) * 100
+                            histology_summary.append(f"{hist_type}: {count} ({percentage:.1f}%)")
+
+                    if histology_summary:
+                        st.write(f"**Top histology types:** {', '.join(histology_summary)}")
+
+                # Age statistics
+                if 'age' in st.session_state.metadata.columns:
+                    age_data = pd.to_numeric(st.session_state.metadata['age'], errors='coerce').dropna()
+                    if len(age_data) > 0:
+                        mean_age = age_data.mean()
+                        age_range = f"{age_data.min():.1f}-{age_data.max():.1f}"
+                        st.write(f"**Age statistics:** Mean {mean_age:.1f} years, Range {age_range} years")
+
+                with st.expander("Clinical data columns"):
+                    cols_per_row = 3
+                    columns = list(st.session_state.metadata.columns)
+                    for i in range(0, len(columns), cols_per_row):
+                        row_cols = st.columns(cols_per_row)
+                        for j, col_name in enumerate(columns[i:i + cols_per_row]):
+                            with row_cols[j]:
+                                completeness = (st.session_state.metadata[col_name].count() / total_patients) * 100
+                                st.text(f"{col_name} ({completeness:.0f}%)")
+
         else:
             st.subheader("Data Preview")
             st.dataframe(st.session_state.processed_data, use_container_width=True)
