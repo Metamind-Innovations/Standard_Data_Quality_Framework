@@ -10,9 +10,13 @@ import pandas as pd
 
 def extract_patient_id_from_path(path):
     """
-    Extract patient ID from image file path.
+    Extract patient ID from image file path using various naming conventions.
+
+    Utility function that parses file and directory paths to identify patient identifiers,
+    supporting different naming patterns commonly found in medical imaging datasets.
 
     :param path: Path to image file
+    :type path: str
     :return: Patient ID string
     :rtype: str
     """
@@ -33,9 +37,13 @@ def extract_patient_id_from_path(path):
 
 def load_clinical_metadata(metadata_path=None):
     """
-    Load clinical metadata from CSV file.
+    Load clinical metadata from CSV file with automatic path detection.
+
+    Utility function that loads clinical metadata to support enhanced quality assessments.
+    Attempts to locate metadata files in default locations if no path is specified.
 
     :param metadata_path: Path to clinical CSV file
+    :type metadata_path: str or None
     :return: Clinical metadata DataFrame
     :rtype: pd.DataFrame or None
     """
@@ -63,10 +71,26 @@ def load_clinical_metadata(metadata_path=None):
 
 def check_population_representativity_images(image_paths, metadata=None):
     """
-    Check population representativity using minority/majority class ratio as per SDQF guidelines.
+    Assess population representativity through class distribution analysis.
+
+    **Population Representativity Check**
+
+    Population representativity refers to the degree to which the data adequately
+    represent the population in question. For image data, this is measured by checking
+    each class has a similar number of samples using the minority/majority class ratio.
+
+    **SDQF Rating Criteria:**
+
+    * Minority/majority ratio ≤0.2: Rating 1/5 (poor representativity)
+    * Minority/majority ratio ≥0.8: Rating 5/5 (excellent representativity)
+
+    The function prioritizes histology distribution from clinical metadata when available,
+    falling back to patient image count distribution as an alternative measure.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
+    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -152,10 +176,26 @@ def check_population_representativity_images(image_paths, metadata=None):
 
 def check_metadata_granularity_images(image_paths, metadata=None):
     """
-    Check metadata granularity based on patients with metadata / total patients ratio.
+    Evaluate metadata granularity based on patient coverage and completeness.
+
+    **Metadata Granularity Check**
+
+    Metadata granularity refers to the availability, comprehensiveness and level of detail
+    of metadata that help users understand the data being used. For image data, this is
+    measured by checking the ratio of patients with metadata to total patients.
+
+    **SDQF Rating Criteria:**
+
+    * Patients with metadata ratio ≤0.2: Rating 1/5 (poor metadata coverage)
+    * Patients with metadata ratio ≥0.8: Rating 5/5 (excellent metadata coverage)
+
+    The function counts patients with at least 50% complete metadata fields as having
+    adequate metadata granularity.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
+    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -204,10 +244,27 @@ def check_metadata_granularity_images(image_paths, metadata=None):
 
 def check_accuracy_images(image_paths, metadata=None):
     """
-    Check accuracy focusing on slice dimensions consistency and missing slices.
+    Assess data accuracy through slice dimension consistency and completeness validation.
+
+    **Accuracy Check**
+
+    Accuracy refers to the degree to which data correctly describes what it was designed
+    to measure (the "real world" entity). For CT scan images, this is measured by checking
+    slice dimension consistency and detecting missing slices.
+
+    **SDQF Rating Criteria:**
+
+    * Missing slices/total slices ratio ≤0.2: Rating 5/5 (excellent accuracy)
+    * Missing slices/total slices ratio ≥0.8: Rating 1/5 (poor accuracy)
+    * Combined with dimension consistency analysis
+
+    The function evaluates both dimensional consistency across images and identifies
+    missing or corrupted slices within volumes.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
+    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -271,9 +328,25 @@ def check_accuracy_images(image_paths, metadata=None):
 
 def check_coherence_images(image_paths):
     """
-    Check coherence focusing on consistent number of channels across images.
+    Evaluate data coherence through consistent image channel analysis.
+
+    **Coherence Check**
+
+    Coherence refers to the degree to which aspects relevant for analysability are used
+    consistently throughout a dataset or across different datasets or versions of one dataset.
+    For image data, this is measured by checking if images all have the same number of
+    channels (e.g., grayscale vs RGB).
+
+    **SDQF Rating Criteria:**
+
+    * Images with different channels/total images ratio ≤0.2: Rating 5/5 (excellent coherence)
+    * Images with different channels/total images ratio ≥0.8: Rating 1/5 (poor coherence)
+
+    The function analyzes the number of components per pixel across all images to ensure
+    consistent channel representation for proper analysis.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -332,9 +405,25 @@ def check_coherence_images(image_paths):
 
 def check_semantic_coherence_images(image_paths):
     """
-    Check semantic coherence by detecting duplicate images/slices.
+    Assess semantic coherence through duplicate image detection and content analysis.
+
+    **Semantic Coherence Check**
+
+    Semantic coherence refers to the degree to which the same value means the same
+    throughout a dataset or across different datasets or versions of one dataset,
+    improving analysability. For image data, this is measured by detecting duplicate
+    images/slices using content-based hashing.
+
+    **SDQF Rating Criteria:**
+
+    * Number of detected duplicates/total images ratio ≤0.2: Rating 5/5 (excellent semantic coherence)
+    * Number of detected duplicates/total images ratio ≥0.8: Rating 1/5 (poor semantic coherence)
+
+    The function uses MD5 hashing of image array content to identify exact duplicates
+    that could compromise analysis validity.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -386,10 +475,26 @@ def check_semantic_coherence_images(image_paths):
 
 def check_completeness_images(image_paths, metadata=None):
     """
-    Check completeness by calculating missing pixels / total pixels ratio.
+    Evaluate data completeness through missing pixel analysis across all images.
+
+    **Completeness Check**
+
+    Completeness refers to the degree to which all required information is present in
+    a particular dataset. For image data, this is measured by calculating the ratio of
+    missing pixels to total pixels across all images in the dataset.
+
+    **SDQF Rating Criteria:**
+
+    * Missing pixels/total pixels ratio ≤0.2: Rating 5/5 (excellent completeness)
+    * Missing pixels/total pixels ratio ≥0.8: Rating 1/5 (poor completeness)
+
+    The function treats zero-valued pixels as missing data, which is appropriate for
+    medical imaging where zero typically indicates absence of tissue or data.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
+    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -436,9 +541,25 @@ def check_completeness_images(image_paths, metadata=None):
 
 def check_relational_consistency_images(image_paths):
     """
-    Check relational consistency by detecting duplicate files and patient ID consistency.
+    Assess relational consistency through file integrity and patient ID format validation.
+
+    **Relational Consistency Check**
+
+    Relational consistency refers to the degree to which data has attributes that are free
+    from relational contradiction, i.e. each entity shall be represented by at most one
+    identifiable data unit, or by multiple but consistent identifiable units. For image data,
+    this is measured by detecting duplicate files and ensuring consistent patient ID formatting.
+
+    **SDQF Rating Criteria:**
+
+    * Combined issues (duplicates + ID inconsistencies) ratio ≤0.2: Rating 5/5 (excellent consistency)
+    * Combined issues ratio ≥0.8: Rating 1/5 (poor consistency)
+
+    The function checks for file-level duplicates using content hashing and validates
+    patient ID formatting consistency across the dataset.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -503,10 +624,19 @@ def check_relational_consistency_images(image_paths):
 
 def run_all_checks_images(image_paths, metadata=None):
     """
-    Run all quantitative checks for image datasets following SDQF guidelines.
+    Execute all quantitative quality checks for image datasets following SDQF guidelines.
+
+    Orchestrates the complete quality assessment workflow for medical imaging datasets,
+    running all seven core SDQF quality dimensions: population representativity, metadata
+    granularity, accuracy, coherence, semantic coherence, completeness, and relational consistency.
+
+    Each check returns standardized scores and explanations following SDQF rating criteria,
+    enabling comprehensive quality assessment for medical imaging research and clinical applications.
 
     :param image_paths: List of paths to NRRD image files
+    :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
+    :type metadata: pd.DataFrame, str, or None
     :return: Dictionary of check results
     :rtype: dict
     """
