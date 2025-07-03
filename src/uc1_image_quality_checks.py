@@ -35,7 +35,7 @@ def extract_patient_id_from_path(path):
     return path_obj.parent.name
 
 
-def load_clinical_metadata(metadata_path=None):
+def load_clinical_metadata(metadata_path):
     """
     Load clinical metadata from CSV file with automatic path detection.
 
@@ -47,18 +47,6 @@ def load_clinical_metadata(metadata_path=None):
     :return: Clinical metadata DataFrame
     :rtype: pd.DataFrame or None
     """
-    if metadata_path is None:
-        # Try default locations
-        default_paths = [
-            "assets/NSCLC-Radiomics-Lung1.clinical-version3-Oct-2019.csv",
-            "NSCLC-Radiomics-Lung1.clinical-version3-Oct-2019.csv"
-        ]
-
-        for path in default_paths:
-            if os.path.exists(path):
-                metadata_path = path
-                break
-
     if metadata_path and os.path.exists(metadata_path):
         try:
             return pd.read_csv(metadata_path)
@@ -97,11 +85,12 @@ def check_population_representativity_images(image_paths, metadata=None):
     if not image_paths:
         return 0, "No image files found"
 
-    # Load clinical metadata if not provided
-    if metadata is None or isinstance(metadata, str):
+    if isinstance(metadata, str):
         clinical_data = load_clinical_metadata(metadata)
-    else:
+    elif isinstance(metadata, pd.DataFrame):
         clinical_data = metadata
+    else:
+        clinical_data = None
 
     if clinical_data is not None and 'Histology' in clinical_data.columns:
         # Extract patient IDs from image paths
@@ -209,11 +198,12 @@ def check_metadata_granularity_images(image_paths, metadata=None):
 
     total_patients = len(image_patient_ids)
 
-    # Load clinical metadata if available
-    if metadata is None or isinstance(metadata, str):
+    if isinstance(metadata, str):
         clinical_data = load_clinical_metadata(metadata)
-    else:
+    elif isinstance(metadata, pd.DataFrame):
         clinical_data = metadata
+    else:
+        clinical_data = None
 
     if clinical_data is not None:
         patients_with_metadata = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
@@ -242,7 +232,7 @@ def check_metadata_granularity_images(image_paths, metadata=None):
         return 0, "No clinical metadata available"
 
 
-def check_accuracy_images(image_paths, metadata=None):
+def check_accuracy_images(image_paths):
     """
     Assess data accuracy through slice dimension consistency and completeness validation.
 
@@ -263,8 +253,6 @@ def check_accuracy_images(image_paths, metadata=None):
 
     :param image_paths: List of paths to NRRD image files
     :type image_paths: list
-    :param metadata: Optional metadata DataFrame or path to CSV
-    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -473,7 +461,7 @@ def check_semantic_coherence_images(image_paths):
     return score, f"Duplicate detection: {duplicate_images}/{valid_images} images are duplicates ({duplication_ratio:.1%}). Unique images: {unique_images}. Duplication ratio: {duplication_ratio:.3f}. Rating: {score_rating:.1f}/5"
 
 
-def check_completeness_images(image_paths, metadata=None):
+def check_completeness_images(image_paths):
     """
     Evaluate data completeness through missing pixel analysis across all images.
 
@@ -493,8 +481,6 @@ def check_completeness_images(image_paths, metadata=None):
 
     :param image_paths: List of paths to NRRD image files
     :type image_paths: list
-    :param metadata: Optional metadata DataFrame or path to CSV
-    :type metadata: pd.DataFrame, str, or None
     :return: Tuple of (score, explanation)
     :rtype: tuple
     """
@@ -644,10 +630,10 @@ def run_all_checks_images(image_paths, metadata=None):
 
     results["population_representativity"] = check_population_representativity_images(image_paths, metadata)
     results["metadata_granularity"] = check_metadata_granularity_images(image_paths, metadata)
-    results["accuracy"] = check_accuracy_images(image_paths, metadata)
+    results["accuracy"] = check_accuracy_images(image_paths)
     results["coherence"] = check_coherence_images(image_paths)
     results["semantic_coherence"] = check_semantic_coherence_images(image_paths)
-    results["completeness"] = check_completeness_images(image_paths, metadata)
+    results["completeness"] = check_completeness_images(image_paths)
     results["relational_consistency"] = check_relational_consistency_images(image_paths)
 
     return results
