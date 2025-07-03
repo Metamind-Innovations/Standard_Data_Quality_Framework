@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 
@@ -9,6 +10,8 @@ from config.use_case_config import USE_CASES
 from src.data_loader import load_data, load_metadata, save_example_data
 from src.quality_checks import run_all_checks
 from src.rating import get_ratings, get_overall_rating
+from src.uc1_image_quality_checks import run_all_checks_images
+from pathlib import Path
 
 st.set_page_config(
     page_title="Standard Data Quality Framework",
@@ -29,6 +32,8 @@ if "processed_data" not in st.session_state:
     st.session_state.temp_metadata = None
     st.session_state.qualitative_scores = {}
     st.session_state.qualitative_ratings = None
+    st.session_state.image_paths = None
+    st.session_state.nrrd_directory = None
 
 QUALITATIVE_DIMENSIONS = {
     "accessibility": {
@@ -168,7 +173,6 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "semantic_coherence": "unique column names / total columns",
         "completeness": "non-missing values / total values",
         "relational_consistency": "unique rows / total rows",
-        "clinical_stage_consistency": "clinically consistent staging / total staging records",
         "accessibility": "User assessment based on data obtainability and clarity",
         "use_permissiveness": "User assessment based on license permissiveness",
         "availability": "User assessment based on data availability and access",
@@ -178,6 +182,16 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "consistency": "User assessment based on logical coherence"
     }
 
+    calculation_methods_images = {
+        "population_representativity": "Distribution balance of histology types or images per patient",
+        "metadata_granularity": "images with metadata / total images",
+        "accuracy": "images passing HU range, spacing, and dimension checks / total checks",
+        "coherence": "consistency score across image properties (spacing, orientation, size, pixel type)",
+        "semantic_coherence": "unique patient-series combinations / total combinations",
+        "completeness": "complete volumes without missing slices / total volumes",
+        "relational_consistency": "unique images / total images (based on file hash)"
+    }
+
     rating_thresholds = """
         - Value 0.0-0.2: Rating 1/5
         - Value 0.2-0.4: Rating 2/5
@@ -185,6 +199,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
         - Value 0.6-0.8: Rating 4/5
         - Value 0.8-1.0: Rating 5/5
         """
+
+    is_image_data = st.session_state.selected_use_case == "Use case 1" and st.session_state.image_paths is not None
 
     for metric, (rating, value, explanation) in ratings.items():
         display_name = metric_names.get(metric, metric)
@@ -197,7 +213,10 @@ def display_metrics(ratings, metric_type="Quantitative"):
                 st.write(explanation)
 
                 st.markdown("**Calculation Method:**")
-                st.write(calculation_methods.get(metric, "No calculation method available"))
+                if is_image_data and metric in calculation_methods_images:
+                    st.write(calculation_methods_images.get(metric))
+                else:
+                    st.write(calculation_methods.get(metric, "No calculation method available"))
 
                 st.markdown("**Rating Thresholds:**")
                 st.markdown(rating_thresholds)
@@ -289,6 +308,29 @@ def get_use_case_specific_columns(selected_use_case, data_columns):
     return available_target, available_age, available_other
 
 
+def load_nrrd_directory(directory_path):
+    """
+    Load all NRRD files from a directory.
+
+    :param directory_path: Path to directory containing NRRD files
+    :return: List of NRRD file paths
+    :rtype: list
+    """
+    nrrd_files = []
+
+    # Add more patterns below if files have different extensions
+    patterns = [
+        os.path.join(directory_path, '**', '*.nrrd'),
+    ]
+
+    for pattern in patterns:
+        nrrd_files.extend(glob.glob(pattern, recursive=True))
+
+    image_files = [f for f in nrrd_files if 'image' in os.path.basename(f).lower()]
+
+    return image_files
+
+
 def main():
     create_assets_dir()
 
@@ -319,35 +361,84 @@ def main():
 
     st.sidebar.markdown("---")
 
-    uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
-    uploaded_metadata = st.sidebar.file_uploader("Upload metadata (optional)", type="csv")
+    if selected_use_case == "Use case 1":
+        st.sidebar.markdown("### UC1 Image Data Input")
+        nrrd_directory = st.sidebar.text_input(
+            "Path to NRRD files directory",
+            value="assets/converted_nrrds",
+            help="Enter the path to the directory containing NRRD image files"
+        )
 
-    if uploaded_file is not None:
-        try:
-            st.session_state.temp_data = load_data(uploaded_file)
-        except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
-            st.session_state.temp_data = None
+        uploaded_metadata = st.sidebar.file_uploader("Upload metadata CSV (optional)", type="csv")
 
-    if uploaded_metadata is not None:
-        try:
-            st.session_state.temp_metadata = load_metadata(uploaded_metadata)
-        except Exception as e:
-            st.error(f"Error loading metadata: {str(e)}")
-            st.session_state.temp_metadata = None
+        if st.sidebar.button("Load Image Data"):
+            if os.path.exists(nrrd_directory):
+                image_paths = load_nrrd_directory(nrrd_directory)
+                if image_paths:
+                    st.session_state.image_paths = image_paths
+                    st.session_state.nrrd_directory = nrrd_directory
+                    st.session_state.selected_use_case = selected_use_case
 
-    if st.sidebar.button("Load Data"):
-        if st.session_state.temp_data is not None:
-            st.session_state.processed_data = st.session_state.temp_data
-            st.session_state.metadata = st.session_state.temp_metadata
-            st.session_state.selected_use_case = selected_use_case
-            st.success("Data loaded successfully!")
+                    if uploaded_metadata is not None:
+                        try:
+                            st.session_state.metadata = load_metadata(uploaded_metadata)
+                        except Exception as e:
+                            st.error(f"Error loading metadata: {str(e)}")
+
+                    st.success(f"Loaded {len(image_paths)} image files successfully!")
+                else:
+                    st.error("No NRRD/MHA files found in the specified directory!")
+            else:
+                st.error("Directory does not exist! Please check the path.")
+    else:
+        uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
+        uploaded_metadata = st.sidebar.file_uploader("Upload metadata (optional)", type="csv")
+
+        if uploaded_file is not None:
+            try:
+                st.session_state.temp_data = load_data(uploaded_file)
+            except Exception as e:
+                st.error(f"Error loading data: {str(e)}")
+                st.session_state.temp_data = None
+
+        if uploaded_metadata is not None:
+            try:
+                st.session_state.temp_metadata = load_metadata(uploaded_metadata)
+            except Exception as e:
+                st.error(f"Error loading metadata: {str(e)}")
+                st.session_state.temp_metadata = None
+
+        if st.sidebar.button("Load Data"):
+            if st.session_state.temp_data is not None:
+                st.session_state.processed_data = st.session_state.temp_data
+                st.session_state.metadata = st.session_state.temp_metadata
+                st.session_state.selected_use_case = selected_use_case
+                st.session_state.image_paths = None
+                st.success("Data loaded successfully!")
+            else:
+                st.error("Please upload a dataset first!")
+
+    if (st.session_state.processed_data is not None) or (st.session_state.image_paths is not None):
+        if st.session_state.image_paths is not None:
+            st.subheader("Image Data Overview")
+            st.write(f"**Total images loaded:** {len(st.session_state.image_paths)}")
+
+            patient_ids = set()
+            for path in st.session_state.image_paths:
+                patient_id = Path(path).parent.name.split('_')[0]
+                patient_ids.add(patient_id)
+
+            st.write(f"**Number of patients:** {len(patient_ids)}")
+            st.write(f"**Average images per patient:** {len(st.session_state.image_paths) / len(patient_ids):.1f}")
+
+            with st.expander("Sample image paths"):
+                for i, path in enumerate(st.session_state.image_paths[:10]):
+                    st.text(f"{i + 1}. {Path(path).name}")
+                if len(st.session_state.image_paths) > 10:
+                    st.text(f"... and {len(st.session_state.image_paths) - 10} more files")
         else:
-            st.error("Please upload a dataset first!")
-
-    if st.session_state.processed_data is not None:
-        st.subheader("Data Preview")
-        st.dataframe(st.session_state.processed_data, use_container_width=True)
+            st.subheader("Data Preview")
+            st.dataframe(st.session_state.processed_data, use_container_width=True)
 
         st.markdown("---")
         st.subheader("Qualitative Check Configuration")
@@ -397,62 +488,69 @@ def main():
             score = int(selected_option[0])
             st.session_state.qualitative_scores[key] = score
 
-        st.markdown("---")
-        st.subheader("Quantitative Check Configuration")
+        if st.session_state.image_paths is None:
+            st.markdown("---")
+            st.subheader("Quantitative Check Configuration")
 
-        data_columns = list(st.session_state.processed_data.columns)
-        available_target, available_age, available_other = get_use_case_specific_columns(
-            st.session_state.selected_use_case, data_columns)
+            data_columns = list(st.session_state.processed_data.columns)
+            available_target, available_age, available_other = get_use_case_specific_columns(
+                st.session_state.selected_use_case, data_columns)
 
-        target_column = st.selectbox(
-            "Select Target Column",
-            options=["None"] + (available_target if available_target else data_columns),
-            help="Select the column to be used as the target variable for calculating population representativity.",
-            key="target_column_selector"
-        )
+            target_column = st.selectbox(
+                "Select Target Column",
+                options=["None"] + (available_target if available_target else data_columns),
+                help="Select the column to be used as the target variable for calculating population representativity.",
+                key="target_column_selector"
+            )
 
-        age_column = st.selectbox(
-            "Select Age Column",
-            options=["None"] + (available_age if available_age else data_columns),
-            help="Select the column containing age data for accuracy checks (expected range: 0-120 years).",
-            key="age_column_selector"
-        )
+            age_column = st.selectbox(
+                "Select Age Column",
+                options=["None"] + (available_age if available_age else data_columns),
+                help="Select the column containing age data for accuracy checks (expected range: 0-120 years).",
+                key="age_column_selector"
+            )
 
-        other_numeric_column = st.selectbox(
-            "Select Additional Numeric Column for Validation",
-            options=["None"] + (available_other if available_other else data_columns),
-            help="Select another numeric column for accuracy validation (ranges depend on use case).",
-            key="other_column_selector"
-        )
+            other_numeric_column = st.selectbox(
+                "Select Additional Numeric Column for Validation",
+                options=["None"] + (available_other if available_other else data_columns),
+                help="Select another numeric column for accuracy validation (ranges depend on use case).",
+                key="other_column_selector"
+            )
 
-        st.session_state.target_column = target_column if target_column != "None" else None
-        st.session_state.age_column = age_column if age_column != "None" else None
-        st.session_state.other_column = other_numeric_column if other_numeric_column != "None" else None
+            st.session_state.target_column = target_column if target_column != "None" else None
+            st.session_state.age_column = age_column if age_column != "None" else None
+            st.session_state.other_column = other_numeric_column if other_numeric_column != "None" else None
 
         if st.button("Run Quality Checks", type="primary"):
             if all(score > 0 for score in st.session_state.qualitative_scores.values()):
-                use_case_config = USE_CASES[st.session_state.selected_use_case].copy()
-
-                use_case_config["target_column"] = st.session_state.target_column
-
-                expected_ranges = use_case_config.get("expected_ranges", {}).copy()
-                if st.session_state.age_column and st.session_state.age_column not in expected_ranges:
-                    expected_ranges[st.session_state.age_column] = [0, 120]
-
-                use_case_config["expected_ranges"] = expected_ranges
-                use_case_config["age_column"] = st.session_state.age_column
-                use_case_config["other_column"] = st.session_state.other_column
-
                 if not USE_CASES[st.session_state.selected_use_case]['implemented']:
                     st.error(
                         f"⚠️ {st.session_state.selected_use_case} is not yet implemented. Please select Use Case 1 or Use Case 4.")
                 else:
                     with st.spinner("Running quality checks..."):
-                        check_results = run_all_checks(
-                            st.session_state.processed_data,
-                            use_case_config,
-                            st.session_state.metadata
-                        )
+                        if st.session_state.image_paths is not None:
+                            check_results = run_all_checks_images(
+                                st.session_state.image_paths,
+                                st.session_state.metadata
+                            )
+                        else:
+                            use_case_config = USE_CASES[st.session_state.selected_use_case].copy()
+                            use_case_config["target_column"] = st.session_state.target_column
+
+                            expected_ranges = use_case_config.get("expected_ranges", {}).copy()
+                            if st.session_state.age_column and st.session_state.age_column not in expected_ranges:
+                                expected_ranges[st.session_state.age_column] = [0, 120]
+
+                            use_case_config["expected_ranges"] = expected_ranges
+                            use_case_config["age_column"] = st.session_state.age_column
+                            use_case_config["other_column"] = st.session_state.other_column
+
+                            check_results = run_all_checks(
+                                st.session_state.processed_data,
+                                use_case_config,
+                                st.session_state.metadata
+                            )
+
                         st.session_state.ratings = get_ratings(check_results)
                         st.session_state.overall_rating = get_overall_rating(st.session_state.ratings)
 
@@ -491,7 +589,10 @@ def main():
             display_metrics(st.session_state.ratings, "Quantitative")
 
     else:
-        st.info("Please upload a dataset and click 'Load Data' to begin.")
+        if selected_use_case == "Use case 1":
+            st.info("Please enter the path to your NRRD files directory and click 'Load Image Data' to begin.")
+        else:
+            st.info("Please upload a dataset and click 'Load Data' to begin.")
 
 
 if __name__ == "__main__":
