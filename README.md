@@ -9,7 +9,14 @@ qualitative and quantitative metrics, with specialized support for medical imagi
 
 - **Qualitative Expert Judgment**: Interactive questionnaire for subjective quality assessment
 - **Quantitative Automated Checks**: Algorithm-based validation with configurable thresholds
-- **Multi-Modal Support**: Handles both tabular data and medical imaging datasets (NRRD, MHA formats)
+- **Multi-Modal Support**: Handles tabular data and medical imaging datasets (DICOM, NRRD formats)
+
+### DCM to NRRD Conversion
+
+- **Built-in DICOM Converter**: Minimal-dependency converter for medical imaging workflows
+- **Automatic Patient Detection**: Intelligently organizes DICOM files by patient ID (LUNG1-xxx pattern)
+- **Robust Processing**: Handles various DICOM structures, and filters non-image files like segmentation masks
+- **Quality Preservation**: Maintains proper spacing, origin, and metadata during conversion
 
 ### Interactive Web Interface
 
@@ -93,20 +100,35 @@ streamlit run app.py
 
 3. Follow the workflow:
     - **Select a use case** (UC1: DuneAI or UC4: ASCOPD)
-    - **Upload your dataset** (CSV for tabular data, NRRD directory path for images)
+    - **Upload your dataset** (CSV for tabular data, DCM directory path for images)
     - **Optionally upload metadata** CSV
     - **Complete qualitative assessment** questionnaire
     - **Configure quantitative checks** (select target, age, and validation columns)
     - **Run quality checks** and review results
 
-### Use Case 1 (DuneAI) - Image Data Workflow
+### Use Case 1 (DuneAI) - DICOM Data Workflow
 
-1. **Prepare NRRD files**: Ensure CT scans are in NRRD format in organized directories
+1. **Prepare DICOM files**: Organize CT scans in directory structure like:
+   ```
+   assets/dicom_radiomics_dataset/
+   ├── LUNG1-001/
+   │   └── 09-18-2008-StudyID-NA-69331/
+   │       └── 0.000000-NA-82046/
+   │           ├── file1.dcm
+   │           ├── file2.dcm
+   │           └── ...
+   └── LUNG1-002/
+       └── 01-01-2014-StudyID-NA-85095/
+           └── 1.000000-NA-61228/
+               ├── file1.dcm
+               ├── file2.dcm
+               └── ...
+   ```
+
 2. **Clinical metadata**: Upload NSCLC-Radiomics clinical CSV file (optional)
-3. **Directory path**: Enter path to NRRD files directory (e.g., `assets/converted_nrrds`)
-4. **Load data**: Click "Load Data" to process images and extract patient information
-5. **Assessment**: Complete qualitative questionnaire and run quantitative checks
-6. **Results**: Review image-specific quality metrics and clinical correlations
+3. **Directory path**: Enter path to DICOM files directory (e.g., `assets/dicom_radiomics_dataset/`)
+4. **Assessment**: Complete qualitative questionnaire and run quantitative checks
+5. **Results**: Review image-specific quality metrics and clinical correlations
 
 ### Use Case 4 (ASCOPD) - Tabular Data Workflow
 
@@ -121,22 +143,24 @@ streamlit run app.py
 
 ```
 standard-data-quality-framework/
-├── app.py                          # Main Streamlit application
-├── requirements.txt                # Python dependencies
-├── README.md                       # Project documentation
-├── assets/                         # Sample data and templates
-│   ├── example_data.csv           # Sample ASCOPD dataset
-│   └── qualitative_template.json  # Qualitative assessment template
-├── config/                         # Configuration files
-│   └── use_case_config.py         # Use case definitions and parameters
-├── src/                           # Source code modules
-│   ├── __init__.py                # UC1 image quality checks exports
-│   ├── data_loader.py             # Data loading utilities
-│   ├── quality_checks.py          # Tabular data quality checks
-│   ├── rating.py                  # Rating calculation system
-│   └── uc1_image_quality_checks.py # Image quality assessment functions
-└── test_data_radiomics/           # Sample UC1 clinical data
-    └── NSCLC-Radiomics-Lung1.clinical-version3-Oct-2019.csv
+├── app.py                            # Main Streamlit application (UI logic only)
+├── requirements.txt                  # Python dependencies
+├── README.md                         # Project documentation
+├── assets/                           # Sample data and templates
+│   ├── example_data.csv              # Sample ASCOPD dataset
+│   ├── converted_nrrds/              # Output directory for NRRD conversions
+│   └── qualitative_template.json     # Qualitative assessment template
+├── config/                           # Configuration files
+│   └── use_case_config.py            # Use case definitions and parameters
+├── src/                              # Source code modules
+│   ├── __init__.py                   # Package initialization
+│   ├── utils.py                      # DCM to NRRD conversion utilities (NEW)
+│   ├── data_loader.py                # Data loading utilities
+│   ├── quality_checks.py             # Tabular data quality checks
+│   ├── rating.py                     # Rating calculation system
+│   └── uc1_image_quality_checks.py   # Image quality assessment functions
+└── dicom_radiomics_dataset/          # Sample UC1 clinical data
+    └── NSCLC-Radiomics-metadata.csv  # Metadata file containing patient information
 ```
 
 ## 📈 Scoring System
@@ -156,6 +180,12 @@ Image quality metrics follow specific SDQF thresholds:
 - **≤0.2 error/inconsistency ratio**: 5/5 rating
 - **≥0.8 error/inconsistency ratio**: 1/5 rating
 - **Linear interpolation** for intermediate values
+
+## 🚨 Known Limitations
+
+- DICOM conversion currently optimized for CT scans (may need adjustments for MRI/other modalities)
+- Patient ID detection assumes LUNG1-xxx naming pattern (customizable in `src/utils.py`)
+- Large DICOM datasets may require significant processing time and disk space
 
 ## 📜 License
 All rights reserved by MetaMinds Innovations.

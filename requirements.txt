@@ -4,3 +4,4 @@ pandas==2.3.0
 plotly==6.2.0
 streamlit==1.46.1
 simpleitk==2.5.2
+pydicom==3.0.1

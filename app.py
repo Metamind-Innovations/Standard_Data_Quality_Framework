@@ -13,6 +13,7 @@ from src.data_loader import load_data, load_metadata, save_example_data
 from src.quality_checks import run_all_checks
 from src.rating import get_ratings, get_overall_rating
 from src.uc1_image_quality_checks import run_all_checks_images, extract_patient_id_from_path
+from src.utils import convert_dcm_to_nrrd
 
 st.set_page_config(
     page_title="Standard Data Quality Framework",
@@ -368,44 +369,56 @@ def main():
 
     if selected_use_case == "Use case 1":
         st.sidebar.markdown("### UC1 Image Data Input")
-        nrrd_directory = st.sidebar.text_input(
-            "Path to NRRD files directory",
-            value="assets/converted_nrrds",
-            help="Enter the path to the directory containing NRRD image files"
+        dcm_directory = st.sidebar.text_input(
+            "Path to DCM files directory",
+            value="assets/dicom_radiomics_dataset",
+            help="Enter the path to the directory containing DCM files"
         )
 
         uploaded_clinical_csv = st.sidebar.file_uploader(
-            "Upload clinical CSV file (optional)",
+            "Upload Metadata file (optional)",
             type="csv",
             help="Upload NSCLC-Radiomics clinical CSV file for enhanced analysis"
         )
 
-        if st.sidebar.button("Load Data"):
-            if os.path.exists(nrrd_directory):
-                image_paths = load_nrrd_directory(nrrd_directory)
-                if image_paths:
-                    st.session_state.image_paths = image_paths
-                    st.session_state.nrrd_directory = nrrd_directory
-                    st.session_state.selected_use_case = selected_use_case
+        if st.sidebar.button("Convert DCM and Load Data"):
+            if os.path.exists(dcm_directory):
+                with st.spinner("Converting DCM files to NRRD format..."):
+                    success, message = convert_dcm_to_nrrd(dcm_directory)
 
-                    # Try to load clinical metadata from uploaded file
-                    if uploaded_clinical_csv is not None:
-                        try:
-                            clinical_data = load_metadata(uploaded_clinical_csv)
-                            if clinical_data is not None:
-                                st.session_state.metadata = clinical_data
+                if success:
+                    st.success(message)
+
+                    nrrd_output_dir = "assets/converted_nrrds"
+                    image_paths = load_nrrd_directory(nrrd_output_dir)
+
+                    if image_paths:
+                        st.session_state.image_paths = image_paths
+                        st.session_state.nrrd_directory = nrrd_output_dir
+                        st.session_state.selected_use_case = selected_use_case
+
+                        if uploaded_clinical_csv is not None:
+                            try:
+                                clinical_data = load_metadata(uploaded_clinical_csv)
+                                if clinical_data is not None:
+                                    st.session_state.metadata = clinical_data
+                                    st.success(
+                                        f"Converted and loaded {len(image_paths)} image files with clinical data for {len(clinical_data)} patients!")
+                                else:
+                                    st.warning(
+                                        f"Converted and loaded {len(image_paths)} image files but could not load clinical data.")
+                            except Exception as e:
+                                st.error(f"Error loading clinical metadata: {str(e)}")
                                 st.success(
-                                    f"Loaded {len(image_paths)} image files and clinical data for {len(clinical_data)} patients!")
-                            else:
-                                st.warning(f"Loaded {len(image_paths)} image files but could not load clinical data.")
-                        except Exception as e:
-                            st.error(f"Error loading clinical metadata: {str(e)}")
-                            st.success(f"Loaded {len(image_paths)} image files (without clinical data)")
+                                    f"Converted and loaded {len(image_paths)} image files (without clinical data)")
+                        else:
+                            st.session_state.metadata = None
+                            st.success(
+                                f"Converted and loaded {len(image_paths)} image files (no clinical data provided)")
                     else:
-                        st.session_state.metadata = None
-                        st.success(f"Loaded {len(image_paths)} image files (no clinical data provided)")
+                        st.error("No NRRD files found after conversion!")
                 else:
-                    st.error("No NRRD/MHA files found in the specified directory!")
+                    st.error(f"Conversion failed: {message}")
             else:
                 st.error("Directory does not exist! Please check the path.")
     else:
@@ -578,10 +591,10 @@ def main():
             score = int(selected_option[0])
             st.session_state.qualitative_scores[key] = score
 
-        if st.session_state.image_paths is None:
-            st.markdown("---")
-            st.subheader("Quantitative Check Configuration")
+        st.markdown("---")
+        st.subheader("Quantitative Check Configuration")
 
+        if st.session_state.image_paths is None:
             data_columns = list(st.session_state.processed_data.columns)
             available_target, available_age, available_other = get_use_case_specific_columns(
                 st.session_state.selected_use_case, data_columns)
@@ -682,7 +695,7 @@ def main():
 
     else:
         if selected_use_case == "Use case 1":
-            st.info("Please enter the path to your NRRD files directory and click 'Load Image Data' to begin.")
+            st.info("Please enter the path to your DCM files directory and click 'Convert DCM and Load Data' to begin.")
         else:
             st.info("Please upload a dataset and click 'Load Data' to begin.")
 
