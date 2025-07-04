@@ -164,7 +164,7 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
     :type dcm_directory: str
     :param output_directory: Path to output directory for NRRD files
     :type output_directory: str
-    :return: Success status and message
+    :return: Success status, message, and total DCM slices processed
     :rtype: tuple
     """
     try:
@@ -173,10 +173,11 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
         patient_dict = find_dicom_files(dcm_directory)
 
         if not patient_dict:
-            return False, "No DICOM files found in the specified directory"
+            return False, "No DICOM files found in the specified directory", 0
 
         converted_count = 0
         failed_count = 0
+        total_dcm_slices = 0
 
         for patient_id, dicom_files in patient_dict.items():
             try:
@@ -185,6 +186,8 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
                 if not dicom_slices:
                     failed_count += 1
                     continue
+
+                total_dcm_slices += len(dicom_slices)
 
                 sitk_image = dicom_to_sitk_image(dicom_slices)
 
@@ -201,12 +204,13 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
                 continue
 
         if converted_count > 0:
-            message = f"Successfully converted {converted_count} patient(s) to NRRD format"
             if failed_count > 0:
-                message += f" ({failed_count} failed)"
-            return True, message
+                message = f"({failed_count} failed)"
+            else:
+                message = ""
+            return True, message, total_dcm_slices
         else:
-            return False, f"Failed to convert any patients. {failed_count} failures total."
+            return False, f"Failed to convert any patients. {failed_count} failures total.", 0
 
     except Exception as e:
-        return False, f"Error during DICOM to NRRD conversion: {str(e)}"
+        return False, f"Error during DICOM to NRRD conversion: {str(e)}", 0

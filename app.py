@@ -1,7 +1,6 @@
 import glob
 import json
 import os
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -36,6 +35,7 @@ if "processed_data" not in st.session_state:
     st.session_state.qualitative_ratings = None
     st.session_state.image_paths = None
     st.session_state.nrrd_directory = None
+    st.session_state.total_dcm_slices = 0
 
 QUALITATIVE_DIMENSIONS = {
     "accessibility": {
@@ -368,7 +368,6 @@ def main():
     st.sidebar.markdown("---")
 
     if selected_use_case == "Use case 1":
-        st.sidebar.markdown("### UC1 Image Data Input")
         dcm_directory = st.sidebar.text_input(
             "Path to DCM files directory",
             value="assets/dicom_radiomics_dataset",
@@ -381,13 +380,13 @@ def main():
             help="Upload NSCLC-Radiomics clinical CSV file for enhanced analysis"
         )
 
-        if st.sidebar.button("Convert DCM and Load Data"):
+        if st.sidebar.button("Load Data"):
             if os.path.exists(dcm_directory):
-                with st.spinner("Converting DCM files to NRRD format..."):
-                    success, message = convert_dcm_to_nrrd(dcm_directory)
+                with st.spinner("Loading..."):
+                    success, message, total_dcm_slices = convert_dcm_to_nrrd(dcm_directory)
 
                 if success:
-                    st.success(message)
+                    st.session_state.total_dcm_slices = total_dcm_slices
 
                     nrrd_output_dir = "assets/converted_nrrds"
                     image_paths = load_nrrd_directory(nrrd_output_dir)
@@ -403,18 +402,18 @@ def main():
                                 if clinical_data is not None:
                                     st.session_state.metadata = clinical_data
                                     st.success(
-                                        f"Converted and loaded {len(image_paths)} image files with clinical data for {len(clinical_data)} patients!")
+                                        f"Loaded {len(image_paths)} image files with clinical data for {len(clinical_data)} patients! {message}")
                                 else:
                                     st.warning(
-                                        f"Converted and loaded {len(image_paths)} image files but could not load clinical data.")
+                                        f"Loaded {len(image_paths)} image files but could not load clinical data. {message}")
                             except Exception as e:
                                 st.error(f"Error loading clinical metadata: {str(e)}")
                                 st.success(
-                                    f"Converted and loaded {len(image_paths)} image files (without clinical data)")
+                                    f"Loaded {len(image_paths)} image files (without clinical data) {message}")
                         else:
                             st.session_state.metadata = None
                             st.success(
-                                f"Converted and loaded {len(image_paths)} image files (no clinical data provided)")
+                                f"Loaded {len(image_paths)} image files (no clinical data provided) {message}")
                     else:
                         st.error("No NRRD files found after conversion!")
                 else:
@@ -452,7 +451,7 @@ def main():
     if (st.session_state.processed_data is not None) or (st.session_state.image_paths is not None):
         if st.session_state.image_paths is not None:
             st.subheader("Image Data Overview")
-            st.write(f"**Total images loaded:** {len(st.session_state.image_paths)}")
+            st.write(f"**Total DCM slices processed:** {st.session_state.total_dcm_slices}")
 
             patient_ids = set()
             for path in st.session_state.image_paths:
@@ -460,7 +459,7 @@ def main():
                 patient_ids.add(patient_id)
 
             st.write(f"**Number of patients:** {len(patient_ids)}")
-            st.write(f"**Average images per patient:** {len(st.session_state.image_paths) / len(patient_ids):.1f}")
+            st.write(f"**Average DCM slices per patient:** {st.session_state.total_dcm_slices / len(patient_ids):.1f}")
 
             if st.session_state.metadata is not None:
                 st.write(f"**Clinical metadata available for:** {len(st.session_state.metadata)} patients")
@@ -470,13 +469,6 @@ def main():
                 coverage = len(patient_ids.intersection(clinical_patient_ids)) / len(patient_ids) * 100
                 st.write(f"**Clinical data coverage:** {coverage:.1f}% of image patients")
 
-            with st.expander("Sample image paths"):
-                for i, path in enumerate(st.session_state.image_paths[:10]):
-                    st.text(f"{i + 1}. {Path(path).name}")
-                if len(st.session_state.image_paths) > 10:
-                    st.text(f"... and {len(st.session_state.image_paths) - 10} more files")
-
-            # Clinical Data Overview Section
             if st.session_state.metadata is not None:
                 st.subheader("Clinical Data Overview")
 
