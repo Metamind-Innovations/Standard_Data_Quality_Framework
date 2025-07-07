@@ -249,71 +249,82 @@ def display_metrics(ratings, metric_type="Quantitative"):
                 st.markdown(f"**Raw Value:** {value:.3f}")
                 st.markdown("_Higher values are better for all metrics_")
 
-            # Show detailed pie charts for population representativity if available
-            if metric == "population_representativity" and detailed_results:
-                st.markdown("---")
-                st.markdown("**Feature-wise Representativity Breakdown:**")
+                # Show detailed pie charts for population representativity if available
+                if metric == "population_representativity" and detailed_results:
+                    st.markdown("---")
+                    st.markdown("**Feature-wise Representativity Breakdown:**")
 
-                # Filter out features that don't have valid scores or details
-                valid_features = {k: v for k, v in detailed_results.items()
-                                  if v.get('score', 0) > 0 and 'details' in v}
+                    # Show all features that were selected, regardless of their scores
+                    if detailed_results:
+                        # Calculate number of columns for pie charts
+                        num_features = len(detailed_results)
+                        cols_per_row = min(3, num_features)
 
-                if valid_features:
-                    # Calculate number of columns for pie charts
-                    num_features = len(valid_features)
-                    cols_per_row = min(3, num_features)
+                        for i in range(0, num_features, cols_per_row):
+                            feature_cols = st.columns(cols_per_row)
+                            current_features = list(detailed_results.items())[i:i + cols_per_row]
 
-                    for i in range(0, num_features, cols_per_row):
-                        feature_cols = st.columns(cols_per_row)
-                        current_features = list(valid_features.items())[i:i + cols_per_row]
+                            for j, (feature_name, feature_data) in enumerate(current_features):
+                                if j < len(feature_cols):
+                                    with feature_cols[j]:
+                                        feature_score = feature_data['score']
+                                        feature_rating = calculate_rating(feature_score)
 
-                        for j, (feature_name, feature_data) in enumerate(current_features):
-                            if j < len(feature_cols):
-                                with feature_cols[j]:
-                                    feature_score = feature_data['score']
-                                    feature_rating = calculate_rating(feature_score)
+                                        # Create individual feature pie chart
+                                        feature_fig = px.pie(
+                                            values=[feature_rating, 5 - feature_rating],
+                                            names=["Score", "Remaining"],
+                                            hole=0.6,
+                                            color_discrete_sequence=["#ff7f0e", "#e0e0e0"],
+                                            title=f"{feature_name}"
+                                        )
+                                        feature_fig.update_layout(
+                                            showlegend=False,
+                                            margin=dict(l=10, r=10, t=40, b=10),
+                                            height=300,
+                                            annotations=[dict(text=f"{feature_rating}/5", x=0.5, y=0.5, font_size=16,
+                                                              showarrow=False)],
+                                            title_x=0.5,
+                                            title_font_size=14
+                                        )
+                                        st.plotly_chart(feature_fig, use_container_width=True,
+                                                        key=f"{metric_type}_{metric}_{feature_name}_pie")
 
-                                    # Create individual feature pie chart
-                                    feature_fig = px.pie(
-                                        values=[feature_rating, 5 - feature_rating],
-                                        names=["Score", "Remaining"],
-                                        hole=0.6,
-                                        color_discrete_sequence=["#ff7f0e", "#e0e0e0"],
-                                        title=f"{feature_name}"
-                                    )
-                                    feature_fig.update_layout(
-                                        showlegend=False,
-                                        margin=dict(l=5, r=5, t=30, b=5),
-                                        annotations=[dict(text=f"{feature_rating}/5", x=0.5, y=0.5, font_size=14,
-                                                          showarrow=False)],
-                                        title_x=0.5,
-                                        title_font_size=12
-                                    )
-                                    st.plotly_chart(feature_fig, use_container_width=True,
-                                                    key=f"{metric_type}_{metric}_{feature_name}_pie")
+                                        # Show feature details
+                                        details = feature_data.get('details', {})
+                                        explanation = feature_data.get('explanation', 'No explanation available')
 
-                                    # Show feature details
-                                    details = feature_data.get('details', {})
-                                    if 'balance_score' in details:
-                                        st.markdown(f"**Balance Score:** {details['balance_score']:.3f}")
-                                        if 'ideal_proportion' in details:
-                                            st.markdown(f"**Ideal per class:** {details['ideal_proportion']:.1%}")
-                                    elif 'ratio' in details:
-                                        st.markdown(f"**Ratio:** {details['ratio']:.3f}")
+                                        # Always show the explanation
+                                        st.markdown(f"**Analysis:** {explanation}")
 
-                                    # Show class/group distribution for categorical features
-                                    if 'classes' in details:
-                                        classes = details['classes']
-                                        top_classes = sorted(classes.items(), key=lambda x: x[1], reverse=True)[:2]
-                                        class_str = ", ".join([f"{k}: {v}" for k, v in top_classes])
-                                        st.markdown(f"**Top classes:** {class_str}")
-                                    elif 'age_groups' in details:
-                                        age_groups = details['age_groups']
-                                        st.markdown(
-                                            f"**Age range:** {details['age_range'][0]:.0f}-{details['age_range'][1]:.0f}")
-                                        st.markdown(f"**Mean age:** {details['mean_age']:.1f}")
-                else:
-                    st.info("No detailed feature breakdown available.")
+                                        if 'balance_score' in details:
+                                            st.markdown(f"**Balance Score:** {details['balance_score']:.3f}")
+                                        elif 'ratio' in details:
+                                            st.markdown(f"**Ratio:** {details['ratio']:.3f}")
+                                        elif not details:
+                                            st.markdown("**Status:** No analysis details available")
+
+                                        # Show class/group distribution for categorical features
+                                        if 'classes' in details:
+                                            classes = details['classes']
+                                            if classes:
+                                                top_classes = sorted(classes.items(), key=lambda x: x[1], reverse=True)[
+                                                              :2]
+                                                class_str = ", ".join([f"{k}: {v}" for k, v in top_classes])
+                                                st.markdown(f"**Top classes:** {class_str}")
+                                        elif 'age_groups' in details:
+                                            age_groups = details['age_groups']
+                                            if 'age_range' in details and 'mean_age' in details:
+                                                st.markdown(
+                                                    f"**Age range:** {details['age_range'][0]:.0f}-{details['age_range'][1]:.0f}")
+                                                st.markdown(f"**Mean age:** {details['mean_age']:.1f}")
+
+                                        # Show total samples if available
+                                        if 'total_samples' in details:
+                                            st.markdown(f"**Total samples:** {details['total_samples']}")
+
+                    else:
+                        st.info("No detailed feature breakdown available.")
 
 
 def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):

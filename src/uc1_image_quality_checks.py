@@ -119,16 +119,22 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
                     available_clinical, column_name, feature_name
                 )
 
-                # Check if analysis was successful (not based on score value, but on whether we got valid data)
-                if feature_details and (
-                        'balance_score' in feature_details or 'ratio' in feature_details):  # Valid analysis completed
-                    feature_scores.append(feature_score)
-                    feature_explanations.append(f"{feature_name}: {feature_explanation}")
-                    detailed_results[feature_name] = {
-                        'score': feature_score,
-                        'explanation': feature_explanation,
-                        'details': feature_details
-                    }
+                feature_scores.append(feature_score)
+                feature_explanations.append(f"{feature_name}: {feature_explanation}")
+                detailed_results[feature_name] = {
+                    'score': feature_score,
+                    'explanation': feature_explanation,
+                    'details': feature_details if feature_details else {}
+                }
+            else:
+                # Column not found, add with score 0
+                feature_scores.append(0)
+                feature_explanations.append(f"{feature_name}: Column '{column_name}' not found in clinical data")
+                detailed_results[feature_name] = {
+                    'score': 0,
+                    'explanation': f"Column '{column_name}' not found in clinical data",
+                    'details': {}
+                }
 
         if feature_scores:
             # Calculate average score across all selected features
