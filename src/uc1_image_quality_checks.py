@@ -57,33 +57,36 @@ def load_clinical_metadata(metadata_path):
     return None
 
 
-def check_population_representativity_images(image_paths, metadata=None):
+def check_population_representativity_images(image_paths, metadata=None, selected_features=None):
     """
-    Assess population representativity through class distribution analysis.
+    Assess population representativity through class distribution analysis across multiple features.
 
     **Population Representativity Check**
 
     Population representativity refers to the degree to which the data adequately
     represent the population in question. For image data, this is measured by checking
-    each class has a similar number of samples using the minority/majority class ratio.
+    each class has a similar number of samples using the minority/majority class ratio
+    across multiple selected features.
 
     **SDQF Rating Criteria:**
 
     * Minority/majority ratio ≤0.2: Rating 1/5 (poor representativity)
     * Minority/majority ratio ≥0.8: Rating 5/5 (excellent representativity)
 
-    The function prioritizes histology distribution from clinical metadata when available,
-    falling back to patient image count distribution as an alternative measure.
+    The function analyzes distribution across selected features (histology, gender, age, subpopulation)
+    and returns both individual feature scores and an overall average score.
 
     :param image_paths: List of paths to NRRD image files
     :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
     :type metadata: pd.DataFrame, str, or None
-    :return: Tuple of (score, explanation)
+    :param selected_features: Dictionary of selected feature columns
+    :type selected_features: dict or None
+    :return: Tuple of (score, explanation, detailed_results)
     :rtype: tuple
     """
     if not image_paths:
-        return 0, "No image files found"
+        return 0, "No image files found", {}
 
     if isinstance(metadata, str):
         clinical_data = load_clinical_metadata(metadata)
@@ -92,7 +95,11 @@ def check_population_representativity_images(image_paths, metadata=None):
     else:
         clinical_data = None
 
-    if clinical_data is not None and 'Histology' in clinical_data.columns:
+    detailed_results = {}
+    feature_scores = []
+    feature_explanations = []
+
+    if clinical_data is not None and selected_features:
         # Extract patient IDs from image paths
         image_patient_ids = set()
         for path in image_paths:
@@ -103,64 +110,237 @@ def check_population_representativity_images(image_paths, metadata=None):
         available_clinical = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
 
         if len(available_clinical) == 0:
-            return 0, "No clinical data found for patients with images"
+            return 0, "No clinical data found for patients with images", {}
 
-        # Check histology distribution
-        histology_counts = available_clinical['Histology'].dropna().value_counts()
-        num_classes = len(histology_counts)
+        # Analyze each selected feature
+        for feature_name, column_name in selected_features.items():
+            if column_name and column_name in available_clinical.columns:
+                feature_score, feature_explanation, feature_details = _analyze_feature_representativity(
+                    available_clinical, column_name, feature_name
+                )
 
-        if num_classes <= 1:
-            return 0, "Only one histology type found in available data"
+                # Check if analysis was successful (not based on score value, but on whether we got valid data)
+                if feature_details and (
+                        'balance_score' in feature_details or 'ratio' in feature_details):  # Valid analysis completed
+                    feature_scores.append(feature_score)
+                    feature_explanations.append(f"{feature_name}: {feature_explanation}")
+                    detailed_results[feature_name] = {
+                        'score': feature_score,
+                        'explanation': feature_explanation,
+                        'details': feature_details
+                    }
 
-        minority_class_count = histology_counts.min()
-        majority_class_count = histology_counts.max()
+        if feature_scores:
+            # Calculate average score across all selected features
+            average_score = sum(feature_scores) / len(feature_scores)
 
-        ratio = minority_class_count / majority_class_count
+            explanation_parts = feature_explanations[:3]  # Show first 3 in main explanation
+            if len(feature_explanations) > 3:
+                explanation_parts.append(f"and {len(feature_explanations) - 3} more features")
 
-        if ratio <= 0.2:
-            score_rating = 1
-        elif ratio >= 0.8:
-            score_rating = 5
+            combined_explanation = f"Multi-feature representativity analysis. {'; '.join(explanation_parts)}. Average score: {average_score:.3f}"
+
+            return average_score, combined_explanation, detailed_results
         else:
-            score_rating = 1 + (ratio - 0.2) / 0.15
-            score_rating = min(5, max(1, score_rating))
-
-        score = (score_rating - 1) / 4
-
-        class_details = []
-        for class_name, count in histology_counts.items():
-            class_details.append(f"'{class_name}': {count} samples")
-
-        details_str = ", ".join(class_details)
-        return score, f"Minority/majority ratio: {ratio:.3f}. Classes: {details_str}. Rating: {score_rating:.1f}/5"
+            return 0, "No valid features found for representativity analysis", {}
 
     else:
-        # Fallback to patient image count distribution
+        # Fallback to patient image count distribution (original logic)
         patient_counts = Counter()
         for path in image_paths:
             patient_id = extract_patient_id_from_path(path)
             patient_counts[patient_id] += 1
 
         if len(patient_counts) == 0:
-            return 0, "No patients found"
+            return 0, "No patients found", {}
 
         image_counts = list(patient_counts.values())
         min_images = min(image_counts)
         max_images = max(image_counts)
 
         ratio = min_images / max_images if max_images > 0 else 0
+        score = _calculate_representativity_score(ratio)
 
-        if ratio <= 0.2:
-            score_rating = 1
-        elif ratio >= 0.8:
-            score_rating = 5
-        else:
-            score_rating = 1 + (ratio - 0.2) / 0.15
-            score_rating = min(5, max(1, score_rating))
+        detailed_results['image_distribution'] = {
+            'score': score,
+            'explanation': f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient",
+            'details': {'ratio': ratio, 'min_images': min_images, 'max_images': max_images}
+        }
 
-        score = (score_rating - 1) / 4
+        return score, f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient. Score: {score:.3f}", detailed_results
 
-        return score, f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient. Rating: {score_rating:.1f}/5"
+
+def _analyze_feature_representativity(clinical_data, column_name, feature_name):
+    """
+    Analyze representativity for a single feature.
+
+    :param clinical_data: Clinical metadata DataFrame
+    :type clinical_data: pd.DataFrame
+    :param column_name: Name of the column to analyze
+    :type column_name: str
+    :param feature_name: Display name of the feature
+    :type feature_name: str
+    :return: Tuple of (score, explanation, details)
+    :rtype: tuple
+    """
+    if 'age' in column_name.lower() or feature_name.lower() == 'age':
+        return _analyze_age_representativity(clinical_data, column_name, feature_name)
+    else:
+        return _analyze_categorical_representativity(clinical_data, column_name, feature_name)
+
+
+def _analyze_categorical_representativity(clinical_data, column_name, feature_name):
+    """
+    Analyze representativity for categorical features.
+
+    :param clinical_data: Clinical metadata DataFrame
+    :type clinical_data: pd.DataFrame
+    :param column_name: Name of the column to analyze
+    :type column_name: str
+    :param feature_name: Display name of the feature
+    :type feature_name: str
+    :return: Tuple of (score, explanation, details)
+    :rtype: tuple
+    """
+    feature_data = clinical_data[column_name].dropna()
+
+    if len(feature_data) == 0:
+        return 0, f"No valid data for {feature_name}", {}
+
+    class_counts = feature_data.value_counts()
+    num_classes = len(class_counts)
+
+    if num_classes <= 1:
+        return 0, f"Only one {feature_name.lower()} category found", {}
+
+    # Use new balanced distribution scoring
+    score = _calculate_representativity_score(class_counts)
+
+    # Calculate ideal and actual proportions for explanation
+    ideal_proportion = 1.0 / num_classes
+    total_samples = len(feature_data)
+
+    class_details = []
+    for class_name, count in class_counts.items():
+        actual_proportion = count / total_samples
+        class_details.append(f"'{class_name}': {count} ({actual_proportion:.1%})")
+
+    details_str = ", ".join(class_details[:3])
+    if len(class_details) > 3:
+        details_str += f" and {len(class_details) - 3} more"
+
+    explanation = f"Balance score {score:.3f} (ideal: {ideal_proportion:.1%} each), Distribution: {details_str}"
+
+    details = {
+        'balance_score': score,
+        'ideal_proportion': ideal_proportion,
+        'classes': dict(class_counts),
+        'num_classes': num_classes
+    }
+
+    return score, explanation, details
+
+
+def _analyze_age_representativity(clinical_data, column_name, feature_name):
+    """
+    Analyze representativity for age feature using age groups.
+
+    :param clinical_data: Clinical metadata DataFrame
+    :type clinical_data: pd.DataFrame
+    :param column_name: Name of the column to analyze
+    :type column_name: str
+    :param feature_name: Display name of the feature
+    :type feature_name: str
+    :return: Tuple of (score, explanation, details)
+    :rtype: tuple
+    """
+    age_data = pd.to_numeric(clinical_data[column_name], errors='coerce').dropna()
+
+    if len(age_data) == 0:
+        return 0, f"No valid data for {feature_name}", {}
+
+    # Create age groups
+    age_bins = [0, 40, 55, 70, 120]
+    age_labels = ['<40', '40-54', '55-69', '70+']
+
+    try:
+        age_groups = pd.cut(age_data, bins=age_bins, labels=age_labels, include_lowest=True)
+        age_counts = age_groups.value_counts()
+
+        # Filter out age groups with 0 people for balance calculation
+        non_empty_age_counts = age_counts[age_counts > 0]
+
+        if len(non_empty_age_counts) <= 1:
+            return 0, f"Insufficient {feature_name.lower()} group diversity", {}
+
+        # Use new balanced distribution scoring on non-empty groups
+        score = _calculate_representativity_score(non_empty_age_counts)
+
+        # Calculate ideal proportion for explanation
+        ideal_proportion = 1.0 / len(non_empty_age_counts)
+
+        group_details = []
+        for group_name, count in age_counts.items():
+            proportion = count / len(age_data)
+            group_details.append(f"{group_name}: {count} ({proportion:.1%})")
+
+        details_str = ", ".join(group_details)
+        explanation = f"Age balance score {score:.3f} (ideal: {ideal_proportion:.1%} per group), Distribution: {details_str}"
+
+        details = {
+            'balance_score': score,
+            'ideal_proportion': ideal_proportion,
+            'age_groups': dict(age_counts),
+            'mean_age': float(age_data.mean()),
+            'age_range': [float(age_data.min()), float(age_data.max())]
+        }
+
+        return score, explanation, details
+
+    except Exception as e:
+        return 0, f"Error analyzing {feature_name.lower()} groups", {}
+
+
+def _calculate_representativity_score(class_counts):
+    """
+    Calculate representativity score based on how balanced the class distribution is.
+    Perfect balance (all classes equal) = 1.0, maximum imbalance = 0.0
+
+    :param class_counts: Series or dict with class counts
+    :type class_counts: pd.Series or dict
+    :return: Score between 0 and 1
+    :rtype: float
+    """
+    if isinstance(class_counts, dict):
+        counts = list(class_counts.values())
+    else:
+        counts = class_counts.values
+
+    num_classes = len(counts)
+    total_samples = sum(counts)
+
+    if num_classes <= 1 or total_samples == 0:
+        return 0.0
+
+    # Calculate ideal proportion (perfect balance)
+    ideal_proportion = 1.0 / num_classes
+
+    # Calculate actual proportions
+    actual_proportions = [count / total_samples for count in counts]
+
+    # Calculate deviation from ideal balance
+    # Sum of absolute deviations from ideal proportion
+    total_deviation = sum(abs(prop - ideal_proportion) for prop in actual_proportions)
+
+    # Maximum possible deviation (when one class has everything, others have nothing)
+    max_deviation = 2 * (1 - ideal_proportion)
+
+    # Convert to score (1.0 = perfect balance, 0.0 = maximum imbalance)
+    if max_deviation == 0:
+        return 1.0
+
+    balance_score = 1.0 - (total_deviation / max_deviation)
+    return max(0.0, min(1.0, balance_score))
 
 
 def check_metadata_granularity_images(image_paths, metadata=None):
@@ -608,7 +788,7 @@ def check_relational_consistency_images(image_paths):
         return score, f"Good relational consistency. All {total_files} files unique with consistent patient IDs. Rating: {score_rating:.1f}/5"
 
 
-def run_all_checks_images(image_paths, metadata=None):
+def run_all_checks_images(image_paths, metadata=None, selected_features=None):
     """
     Execute all quantitative quality checks for image datasets following SDQF guidelines.
 
@@ -623,12 +803,15 @@ def run_all_checks_images(image_paths, metadata=None):
     :type image_paths: list
     :param metadata: Optional metadata DataFrame or path to CSV
     :type metadata: pd.DataFrame, str, or None
+    :param selected_features: Dictionary of selected feature columns for representativity analysis
+    :type selected_features: dict or None
     :return: Dictionary of check results
     :rtype: dict
     """
     results = {}
 
-    results["population_representativity"] = check_population_representativity_images(image_paths, metadata)
+    results["population_representativity"] = check_population_representativity_images(image_paths, metadata,
+                                                                                      selected_features)
     results["metadata_granularity"] = check_metadata_granularity_images(image_paths, metadata)
     results["accuracy"] = check_accuracy_images(image_paths)
     results["coherence"] = check_coherence_images(image_paths)

@@ -10,7 +10,7 @@ import streamlit as st
 from config.use_case_config import USE_CASES
 from src.data_loader import load_data, load_metadata, save_example_data
 from src.quality_checks import run_all_checks
-from src.rating import get_ratings, get_overall_rating
+from src.rating import get_ratings, get_overall_rating, calculate_rating
 from src.uc1_image_quality_checks import run_all_checks_images, extract_patient_id_from_path
 from src.utils import convert_dcm_to_nrrd
 
@@ -36,6 +36,11 @@ if "processed_data" not in st.session_state:
     st.session_state.image_paths = None
     st.session_state.nrrd_directory = None
     st.session_state.total_dcm_slices = 0
+    # Initialize UC1 column selections
+    st.session_state.uc1_classes_column = None
+    st.session_state.uc1_age_column = None
+    st.session_state.uc1_gender_column = None
+    st.session_state.uc1_subpopulation_column = None
 
 QUALITATIVE_DIMENSIONS = {
     "accessibility": {
@@ -168,7 +173,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
     }
 
     calculation_methods = {
-        "population_representativity": "Score based on how close class distribution is to ideal balance",
+        "population_representativity": "Score based on how balanced class distribution is (perfect balance = 1.0)",
         "metadata_granularity": "patients with metadata / total patients",
         "accuracy": "values within expected range / total values checked",
         "coherence": "features with consistent data types / total features",
@@ -185,7 +190,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
     }
 
     calculation_methods_images = {
-        "population_representativity": "Minority/majority class ratio from histology distribution (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
+        "population_representativity": "Multi-feature analysis: balanced distribution score across selected features (perfect balance = 1.0, maximum imbalance = 0.0)",
         "metadata_granularity": "Patients with complete metadata / total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
         "accuracy": "Combined score: slice dimension consistency + missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
         "coherence": "Number of channels consistency across images (≤0.2 inconsistency = 5/5, ≥0.8 inconsistency = 1/5)",
@@ -204,8 +209,15 @@ def display_metrics(ratings, metric_type="Quantitative"):
 
     is_image_data = st.session_state.selected_use_case == "Use case 1" and st.session_state.image_paths is not None
 
-    for metric, (rating, value, explanation) in ratings.items():
+    for metric, rating_data in ratings.items():
         display_name = metric_names.get(metric, metric)
+
+        # Handle both 3 and 4 element tuples
+        if len(rating_data) == 4:
+            rating, value, explanation, detailed_results = rating_data
+        else:
+            rating, value, explanation = rating_data
+            detailed_results = None
 
         with st.expander(f"{display_name}: {rating}/5", expanded=True):
             cols = st.columns([2, 1])
@@ -224,6 +236,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
                 st.markdown(rating_thresholds)
 
             with cols[1]:
+                # Main pie chart
                 fig = px.pie(values=[rating, 5 - rating], names=["Score", "Remaining"],
                              hole=0.7, color_discrete_sequence=["#1f77b4", "#e0e0e0"])
                 fig.update_layout(
@@ -236,12 +249,81 @@ def display_metrics(ratings, metric_type="Quantitative"):
                 st.markdown(f"**Raw Value:** {value:.3f}")
                 st.markdown("_Higher values are better for all metrics_")
 
+            # Show detailed pie charts for population representativity if available
+            if metric == "population_representativity" and detailed_results:
+                st.markdown("---")
+                st.markdown("**Feature-wise Representativity Breakdown:**")
+
+                # Filter out features that don't have valid scores or details
+                valid_features = {k: v for k, v in detailed_results.items()
+                                  if v.get('score', 0) > 0 and 'details' in v}
+
+                if valid_features:
+                    # Calculate number of columns for pie charts
+                    num_features = len(valid_features)
+                    cols_per_row = min(3, num_features)
+
+                    for i in range(0, num_features, cols_per_row):
+                        feature_cols = st.columns(cols_per_row)
+                        current_features = list(valid_features.items())[i:i + cols_per_row]
+
+                        for j, (feature_name, feature_data) in enumerate(current_features):
+                            if j < len(feature_cols):
+                                with feature_cols[j]:
+                                    feature_score = feature_data['score']
+                                    feature_rating = calculate_rating(feature_score)
+
+                                    # Create individual feature pie chart
+                                    feature_fig = px.pie(
+                                        values=[feature_rating, 5 - feature_rating],
+                                        names=["Score", "Remaining"],
+                                        hole=0.6,
+                                        color_discrete_sequence=["#ff7f0e", "#e0e0e0"],
+                                        title=f"{feature_name}"
+                                    )
+                                    feature_fig.update_layout(
+                                        showlegend=False,
+                                        margin=dict(l=5, r=5, t=30, b=5),
+                                        annotations=[dict(text=f"{feature_rating}/5", x=0.5, y=0.5, font_size=14,
+                                                          showarrow=False)],
+                                        title_x=0.5,
+                                        title_font_size=12
+                                    )
+                                    st.plotly_chart(feature_fig, use_container_width=True,
+                                                    key=f"{metric_type}_{metric}_{feature_name}_pie")
+
+                                    # Show feature details
+                                    details = feature_data.get('details', {})
+                                    if 'balance_score' in details:
+                                        st.markdown(f"**Balance Score:** {details['balance_score']:.3f}")
+                                        if 'ideal_proportion' in details:
+                                            st.markdown(f"**Ideal per class:** {details['ideal_proportion']:.1%}")
+                                    elif 'ratio' in details:
+                                        st.markdown(f"**Ratio:** {details['ratio']:.3f}")
+
+                                    # Show class/group distribution for categorical features
+                                    if 'classes' in details:
+                                        classes = details['classes']
+                                        top_classes = sorted(classes.items(), key=lambda x: x[1], reverse=True)[:2]
+                                        class_str = ", ".join([f"{k}: {v}" for k, v in top_classes])
+                                        st.markdown(f"**Top classes:** {class_str}")
+                                    elif 'age_groups' in details:
+                                        age_groups = details['age_groups']
+                                        st.markdown(
+                                            f"**Age range:** {details['age_range'][0]:.0f}-{details['age_range'][1]:.0f}")
+                                        st.markdown(f"**Mean age:** {details['mean_age']:.1f}")
+                else:
+                    st.info("No detailed feature breakdown available.")
+
 
 def display_radar_chart(ratings, title="Quality Ratings Radar Chart"):
     metrics = []
     values = []
 
-    for metric, (rating, _, _) in ratings.items():
+    for metric, rating_data in ratings.items():
+        # Handle both 3 and 4 element tuples
+        rating = rating_data[0]  # First element is always the rating
+
         metric_names = {
             "population_representativity": "Pop. Representativity",
             "metadata_granularity": "Metadata Granularity",
@@ -586,7 +668,90 @@ def main():
         st.markdown("---")
         st.subheader("Quantitative Check Configuration")
 
-        if st.session_state.image_paths is None:
+        if st.session_state.image_paths is not None:
+            # UC1 Image data configuration
+            if st.session_state.metadata is not None:
+                clinical_columns = list(st.session_state.metadata.columns)
+
+                st.write("Select features for population representativity assessment:")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    # Classes dropdown (histology)
+                    histology_options = ["None"]
+                    for col in clinical_columns:
+                        if 'histology' in col.lower() or col.lower() == 'histology':
+                            histology_options.append(col)
+
+                    classes_column = st.selectbox(
+                        "Select Target Column (e.g. Histology)",
+                        options=histology_options,
+                        help="Select the column containing histology information for representativity analysis.",
+                        key="classes_column_selector"
+                    )
+
+                    # Age dropdown
+                    age_options = ["None"]
+                    for col in clinical_columns:
+                        if 'age' in col.lower():
+                            age_options.append(col)
+
+                    age_column = st.selectbox(
+                        "Select Age Column (Optional)",
+                        options=age_options,
+                        help="Select the column containing age information for representativity analysis.",
+                        key="age_column_selector_uc1"
+                    )
+
+                with col2:
+                    # Gender dropdown
+                    gender_options = ["None"]
+                    for col in clinical_columns:
+                        if 'gender' in col.lower() or 'sex' in col.lower():
+                            gender_options.append(col)
+
+                    gender_column = st.selectbox(
+                        "Select Gender Column (Optional)",
+                        options=gender_options,
+                        help="Select the column containing gender information for representativity analysis.",
+                        key="gender_column_selector"
+                    )
+
+                    # Subpopulation dropdown (optional)
+                    excluded_cols = {"PatientID", classes_column, age_column, gender_column}
+                    subpop_options = ["None"] + [col for col in clinical_columns if col not in excluded_cols]
+
+                    subpopulation_column = st.selectbox(
+                        "Subpopulation Column (Optional)",
+                        options=subpop_options,
+                        help="Select an optional column for subpopulation representativity analysis.",
+                        key="subpopulation_column_selector"
+                    )
+
+                # Store selections in session state
+                st.session_state.uc1_classes_column = classes_column if classes_column != "None" else None
+                st.session_state.uc1_age_column = age_column if age_column != "None" else None
+                st.session_state.uc1_gender_column = gender_column if gender_column != "None" else None
+                st.session_state.uc1_subpopulation_column = subpopulation_column if subpopulation_column != "None" else None
+
+                selected_features = [col for col in [classes_column, gender_column, age_column, subpopulation_column] if
+                                     col != "None"]
+                if selected_features:
+                    st.info(f"Selected features for representativity: {', '.join(selected_features)}")
+                else:
+                    st.warning(
+                        "No features selected. Population representativity will use default image distribution analysis.")
+            else:
+                st.info(
+                    "Clinical metadata not available. Population representativity will analyze image distribution only.")
+                # Reset UC1 column selections
+                st.session_state.uc1_classes_column = None
+                st.session_state.uc1_age_column = None
+                st.session_state.uc1_gender_column = None
+                st.session_state.uc1_subpopulation_column = None
+
+        elif st.session_state.image_paths is None:
             data_columns = list(st.session_state.processed_data.columns)
             available_target, available_age, available_other = get_use_case_specific_columns(
                 st.session_state.selected_use_case, data_columns)
@@ -624,9 +789,22 @@ def main():
                 else:
                     with st.spinner("Running quality checks..."):
                         if st.session_state.image_paths is not None:
+                            # Prepare selected features for UC1
+                            selected_features = {}
+                            if hasattr(st.session_state, 'uc1_classes_column') and st.session_state.uc1_classes_column:
+                                selected_features['Classes'] = st.session_state.uc1_classes_column
+                            if hasattr(st.session_state, 'uc1_gender_column') and st.session_state.uc1_gender_column:
+                                selected_features['Gender'] = st.session_state.uc1_gender_column
+                            if hasattr(st.session_state, 'uc1_age_column') and st.session_state.uc1_age_column:
+                                selected_features['Age'] = st.session_state.uc1_age_column
+                            if hasattr(st.session_state,
+                                       'uc1_subpopulation_column') and st.session_state.uc1_subpopulation_column:
+                                selected_features['Subpopulation'] = st.session_state.uc1_subpopulation_column
+
                             check_results = run_all_checks_images(
                                 st.session_state.image_paths,
-                                st.session_state.metadata
+                                st.session_state.metadata,
+                                selected_features if selected_features else None
                             )
                         else:
                             use_case_config = USE_CASES[st.session_state.selected_use_case].copy()
@@ -660,7 +838,8 @@ def main():
             st.markdown("---")
             st.subheader("Quality Assessment Results")
             if st.session_state.selected_use_case == "Use case 1":
-                st.info("📊 **Note**: UC1 quantitative scores follow SDQF guidelines. Specific thresholds (≤0.2, ≥0.8) determine 1-5 scale ratings.")
+                st.info(
+                    "📊 **Note**: UC1 quantitative scores follow SDQF guidelines. Specific thresholds (≤0.2, ≥0.8) determine 1-5 scale ratings.")
 
             col1, col2 = st.columns(2)
 
