@@ -322,6 +322,35 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                     if 'total_samples' in details:
                                         st.markdown(f"**Total samples:** {details['total_samples']}")
 
+                # Improvement suggestions for low scores on image data quantitative metrics
+                if is_image_data and metric_type == "Quantitative" and rating <= 2:
+                    st.markdown("---")
+                    st.markdown("**📋 Improvement Suggestions:**")
+
+                    improvement_suggestions = {
+                        "population_representativity": "Low representativity indicates imbalanced class distribution across selected features (histology, gender, age groups). "
+                                                       "This can bias machine learning models and reduce generalizability to broader populations. "
+                                                       "Consider collecting additional data for underrepresented classes, using stratified sampling methods, or applying data augmentation techniques for minority classes.",
+                        "metadata_granularity": "Insufficient metadata coverage means many patients lack complete clinical information, limiting the depth of analysis possible. "
+                                                "Missing metadata reduces the ability to perform comprehensive quality assessments and clinical correlations. "
+                                                "Contact data providers to request missing clinical information, implement stricter data collection protocols, or consider excluding patients with incomplete metadata from critical analyses.",
+                        "accuracy": "Poor accuracy reflects inconsistent image dimensions or missing slices, which can compromise analysis reliability and model performance. "
+                                    "These issues often stem from inconsistent imaging protocols or data corruption during transfer/storage. "
+                                    "Standardize CT imaging protocols across acquisition sites, implement data integrity checks during transfer, and consider reprocessing DICOM files with stricter quality control measures.",
+                        "coherence": "Low coherence indicates inconsistent image channel formats (grayscale vs RGB) across the dataset, making unified analysis difficult. "
+                                     "Mixed channel formats can cause preprocessing errors and model training issues. "
+                                     "Standardize all images to the same channel format (typically grayscale for medical CT), implement format validation during data ingestion, and establish consistent preprocessing pipelines.",
+                        "semantic_coherence": "High duplication rates indicate redundant images that can skew analysis results and waste computational resources. "
+                                              "Duplicate images can inflate dataset size artificially and bias statistical analyses. "
+                                              "Implement automated duplicate detection using content hashing, establish unique identifier systems for image files, and create data deduplication protocols before analysis begins.",
+                        "completeness": "High missing pixel ratios suggest image acquisition problems or processing artifacts that reduce data quality. "
+                                        "Zero-valued pixels often indicate scanner malfunctions, motion artifacts, or inappropriate windowing settings. "
+                                        "Review CT acquisition protocols, check scanner calibration, implement quality control measures during image acquisition, and consider excluding severely corrupted images from analysis."
+                    }
+
+                    if metric in improvement_suggestions:
+                        st.markdown(f"*{improvement_suggestions[metric]}*")
+
                 else:
                     st.info("No detailed feature breakdown available.")
 
