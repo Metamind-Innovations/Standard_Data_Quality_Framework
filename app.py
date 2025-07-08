@@ -773,7 +773,7 @@ def main():
                         "No features selected. Population representativity will use default image distribution analysis.")
             else:
                 st.info(
-                    "Clinical metadata not available. Population representativity will analyze image distribution only.")
+                    "Clinical metadata not available. Population Representativity and Metadata Granularity will return a score of 1. Provide clinical metadata for better analysis.")
                 # Reset UC1 column selections
                 st.session_state.uc1_classes_column = None
                 st.session_state.uc1_age_column = None

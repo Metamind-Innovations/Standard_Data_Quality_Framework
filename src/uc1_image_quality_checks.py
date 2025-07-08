@@ -1,6 +1,5 @@
 import hashlib
 import os
-from collections import Counter
 from pathlib import Path
 
 import SimpleITK as sitk
@@ -73,8 +72,9 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
     * Minority/majority ratio ≤0.2: Rating 1/5 (poor representativity)
     * Minority/majority ratio ≥0.8: Rating 5/5 (excellent representativity)
 
-    The function analyzes distribution across selected features (histology, gender, age, subpopulation)
-    and returns both individual feature scores and an overall average score.
+    The function analyzes distribution across selected features (histology, gender, age, subpopulation).
+    If no clinical metadata is provided, returns score of 0 as population representativity
+    cannot be assessed without demographic/clinical information.
 
     :param image_paths: List of paths to NRRD image files
     :type image_paths: list
@@ -151,29 +151,7 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
             return 0, "No valid features found for representativity analysis", {}
 
     else:
-        # Fallback to patient image count distribution (original logic)
-        patient_counts = Counter()
-        for path in image_paths:
-            patient_id = extract_patient_id_from_path(path)
-            patient_counts[patient_id] += 1
-
-        if len(patient_counts) == 0:
-            return 0, "No patients found", {}
-
-        image_counts = list(patient_counts.values())
-        min_images = min(image_counts)
-        max_images = max(image_counts)
-
-        ratio = min_images / max_images if max_images > 0 else 0
-        score = _calculate_representativity_score(ratio)
-
-        detailed_results['image_distribution'] = {
-            'score': score,
-            'explanation': f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient",
-            'details': {'ratio': ratio, 'min_images': min_images, 'max_images': max_images}
-        }
-
-        return score, f"Patient image distribution - Min/max ratio: {ratio:.3f}. Range: {min_images}-{max_images} images per patient. Score: {score:.3f}", detailed_results
+        return 0, "No clinical metadata available for population representativity analysis", {}
 
 
 def _analyze_feature_representativity(clinical_data, column_name, feature_name):
@@ -415,7 +393,7 @@ def check_metadata_granularity_images(image_paths, metadata=None):
 
         return score, f"Patients with metadata: {patients_with_complete_metadata}/{total_patients} ({ratio:.1%}). Rating: {score_rating:.1f}/5"
     else:
-        return 0, "No clinical metadata available"
+        return 0, "No clinical metadata available for metadata granularity analysis"
 
 
 def check_accuracy_images(image_paths):
