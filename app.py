@@ -195,8 +195,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "accuracy": "Combined score: slice dimension consistency + missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
         "coherence": "Number of channels consistency across images (≤0.2 inconsistency = 5/5, ≥0.8 inconsistency = 1/5)",
         "semantic_coherence": "Duplicate image detection using array hash comparison (≤0.2 duplication = 5/5, ≥0.8 duplication = 1/5)",
-        "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
-        "relational_consistency": "File duplication + patient ID format consistency (≤0.2 issues = 5/5, ≥0.8 issues = 1/5)"
+        "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)"
     }
 
     rating_thresholds = """
@@ -495,18 +494,18 @@ def main():
                                 if clinical_data is not None:
                                     st.session_state.metadata = clinical_data
                                     st.success(
-                                        f"Loaded {len(image_paths)} image files with clinical data for {len(clinical_data)} patients! {message}")
+                                        f"Loaded {len(image_paths)} image files with metadata for {len(clinical_data)} patients! {message}")
                                 else:
                                     st.warning(
-                                        f"Loaded {len(image_paths)} image files but could not load clinical data. {message}")
+                                        f"Loaded {len(image_paths)} image files but could not load metadata. {message}")
                             except Exception as e:
-                                st.error(f"Error loading clinical metadata: {str(e)}")
+                                st.error(f"Error loading metadata: {str(e)}")
                                 st.success(
-                                    f"Loaded {len(image_paths)} image files (without clinical data) {message}")
+                                    f"Loaded {len(image_paths)} image files (without metadata) {message}")
                         else:
                             st.session_state.metadata = None
                             st.success(
-                                f"Loaded {len(image_paths)} image files (no clinical data provided) {message}")
+                                f"Loaded {len(image_paths)} image files (no metadata provided) {message}")
                     else:
                         st.error("No NRRD files found after conversion!")
                 else:
@@ -555,21 +554,20 @@ def main():
             st.write(f"**Average DCM slices per patient:** {st.session_state.total_dcm_slices / len(patient_ids):.1f}")
 
             if st.session_state.metadata is not None:
-                st.write(f"**Clinical metadata available for:** {len(st.session_state.metadata)} patients")
+                st.write(f"**Metadata available for:** {len(st.session_state.metadata)} patients")
 
                 # Show clinical data coverage
                 clinical_patient_ids = set(st.session_state.metadata['PatientID'].tolist())
                 coverage = len(patient_ids.intersection(clinical_patient_ids)) / len(patient_ids) * 100
-                st.write(f"**Clinical data coverage:** {coverage:.1f}% of image patients")
+                st.write(f"**Data coverage:** {coverage:.1f}% of image patients")
 
             if st.session_state.metadata is not None:
-                st.subheader("Clinical Data Overview")
+                st.subheader("Metadata Overview")
 
                 # Basic statistics
                 total_patients = len(st.session_state.metadata)
                 total_columns = len(st.session_state.metadata.columns)
-                st.write(f"**Total patients in clinical data:** {total_patients}")
-                st.write(f"**Total clinical fields:** {total_columns}")
+                st.write(f"**Total patients:** {total_patients}")
 
                 # Data completeness analysis
                 non_missing_counts = st.session_state.metadata.count()
@@ -614,15 +612,8 @@ def main():
                         age_range = f"{age_data.min():.1f}-{age_data.max():.1f}"
                         st.write(f"**Age statistics:** Mean {mean_age:.1f} years, Range {age_range} years")
 
-                with st.expander("Clinical data columns"):
-                    cols_per_row = 3
-                    columns = list(st.session_state.metadata.columns)
-                    for i in range(0, len(columns), cols_per_row):
-                        row_cols = st.columns(cols_per_row)
-                        for j, col_name in enumerate(columns[i:i + cols_per_row]):
-                            with row_cols[j]:
-                                completeness = (st.session_state.metadata[col_name].count() / total_patients) * 100
-                                st.text(f"{col_name} ({completeness:.0f}%)")
+                st.subheader("Data Preview")
+                st.dataframe(st.session_state.metadata, use_container_width=True)
 
         else:
             st.subheader("Data Preview")
@@ -683,8 +674,6 @@ def main():
             # UC1 Image data configuration
             if st.session_state.metadata is not None:
                 clinical_columns = list(st.session_state.metadata.columns)
-
-                st.write("Select features for population representativity assessment:")
 
                 col1, col2 = st.columns(2)
 

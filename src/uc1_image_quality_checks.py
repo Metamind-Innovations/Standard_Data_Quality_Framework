@@ -144,7 +144,7 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
             if len(feature_explanations) > 3:
                 explanation_parts.append(f"and {len(feature_explanations) - 3} more features")
 
-            combined_explanation = f"Multi-feature representativity analysis. {'; '.join(explanation_parts)}. Average score: {average_score:.3f}"
+            combined_explanation = f"Multi-feature representativity analysis. {'; '.join(explanation_parts)}."
 
             return average_score, combined_explanation, detailed_results
         else:
@@ -711,96 +711,13 @@ def check_completeness_images(image_paths):
     return score, f"Pixel completeness: {total_pixels - missing_pixels}/{total_pixels} pixels are non-zero ({(1 - missing_ratio):.1%} complete). Missing pixels ratio: {missing_ratio:.3f}. Rating: {score_rating:.1f}/5"
 
 
-def check_relational_consistency_images(image_paths):
-    """
-    Assess relational consistency through file integrity and patient ID format validation.
-
-    **Relational Consistency Check**
-
-    Relational consistency refers to the degree to which data has attributes that are free
-    from relational contradiction, i.e. each entity shall be represented by at most one
-    identifiable data unit, or by multiple but consistent identifiable units. For image data,
-    this is measured by detecting duplicate files and ensuring consistent patient ID formatting.
-
-    **SDQF Rating Criteria:**
-
-    * Combined issues (duplicates + ID inconsistencies) ratio ≤0.2: Rating 5/5 (excellent consistency)
-    * Combined issues ratio ≥0.8: Rating 1/5 (poor consistency)
-
-    The function checks for file-level duplicates using content hashing and validates
-    patient ID formatting consistency across the dataset.
-
-    :param image_paths: List of paths to NRRD image files
-    :type image_paths: list
-    :return: Tuple of (score, explanation)
-    :rtype: tuple
-    """
-    if not image_paths:
-        return 0, "No image files found"
-
-    file_hashes = {}
-    duplicates = []
-    patient_consistency_issues = 0
-    total_files = len(image_paths)
-
-    for path in image_paths:
-        try:
-            # Check for file duplicates
-            with open(path, 'rb') as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
-
-            if file_hash in file_hashes:
-                duplicates.append((path, file_hashes[file_hash]))
-            else:
-                file_hashes[file_hash] = path
-
-            # Check patient ID consistency in path structure
-            patient_id = extract_patient_id_from_path(path)
-            if not patient_id.startswith('LUNG1-'):
-                patient_consistency_issues += 1
-
-        except Exception:
-            continue
-
-    duplicate_count = len(duplicates)
-    duplicate_ratio = duplicate_count / total_files
-    inconsistency_ratio = patient_consistency_issues / total_files
-
-    combined_issues_ratio = (duplicate_ratio + inconsistency_ratio) / 2
-
-    if combined_issues_ratio <= 0.2:
-        score_rating = 5
-    elif combined_issues_ratio >= 0.8:
-        score_rating = 1
-    else:
-        score_rating = 5 - (combined_issues_ratio - 0.2) / 0.15
-        score_rating = min(5, max(1, score_rating))
-
-    score = (score_rating - 1) / 4
-
-    unique_files = total_files - duplicate_count
-    consistent_patient_ids = total_files - patient_consistency_issues
-
-    issues = []
-    if duplicate_count > 0:
-        issues.append(f"{duplicate_count} duplicate files")
-    if patient_consistency_issues > 0:
-        issues.append(f"{patient_consistency_issues} patient ID format issues")
-
-    if issues:
-        issues_str = ", ".join(issues)
-        return score, f"Relational consistency issues: {issues_str}. Unique files: {unique_files}/{total_files}. Consistent patient IDs: {consistent_patient_ids}/{total_files}. Combined issues ratio: {combined_issues_ratio:.3f}. Rating: {score_rating:.1f}/5"
-    else:
-        return score, f"Good relational consistency. All {total_files} files unique with consistent patient IDs. Rating: {score_rating:.1f}/5"
-
-
 def run_all_checks_images(image_paths, metadata=None, selected_features=None):
     """
     Execute all quantitative quality checks for image datasets following SDQF guidelines.
 
     Orchestrates the complete quality assessment workflow for medical imaging datasets,
-    running all seven core SDQF quality dimensions: population representativity, metadata
-    granularity, accuracy, coherence, semantic coherence, completeness, and relational consistency.
+    running six core SDQF quality dimensions: population representativity, metadata
+    granularity, accuracy, coherence, semantic coherence, and completeness.
 
     Each check returns standardized scores and explanations following SDQF rating criteria,
     enabling comprehensive quality assessment for medical imaging research and clinical applications.
@@ -823,6 +740,5 @@ def run_all_checks_images(image_paths, metadata=None, selected_features=None):
     results["coherence"] = check_coherence_images(image_paths)
     results["semantic_coherence"] = check_semantic_coherence_images(image_paths)
     results["completeness"] = check_completeness_images(image_paths)
-    results["relational_consistency"] = check_relational_consistency_images(image_paths)
 
     return results

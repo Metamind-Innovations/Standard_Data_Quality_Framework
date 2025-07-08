@@ -58,11 +58,6 @@ USE_CASES = {
                 "description": "Missing pixels / total pixels ratio across all images",
                 "method": "pixel_completeness_analysis",
                 "sdqf_rating": "≤0.2 missing ratio = 5/5, ≥0.8 missing ratio = 1/5"
-            },
-            "relational_consistency": {
-                "description": "File duplication and patient ID format consistency checks",
-                "method": "file_and_id_consistency_validation",
-                "sdqf_rating": "≤0.2 issues ratio = 5/5, ≥0.8 issues ratio = 1/5"
             }
         },
         "clinical_metadata_file": "NSCLC-Radiomics-Lung1.clinical-version3-Oct-2019.csv",
