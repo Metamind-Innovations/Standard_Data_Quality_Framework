@@ -398,22 +398,21 @@ def check_metadata_granularity_images(image_paths, metadata=None):
 
 def check_accuracy_images(image_paths):
     """
-    Assess data accuracy through slice dimension consistency and completeness validation.
+    Assess data accuracy through missing pixel ratio analysis per patient.
 
     **Accuracy Check**
 
     Accuracy refers to the degree to which data correctly describes what it was designed
-    to measure (the "real world" entity). For CT scan images, this is measured by checking
-    slice dimension consistency and detecting missing slices.
+    to measure (the "real world" entity). For CT scan images, this is measured by calculating
+    the average ratio of missing pixels to total pixels per patient.
 
     **SDQF Rating Criteria:**
 
-    * Missing slices/total slices ratio ≤0.2: Rating 5/5 (excellent accuracy)
-    * Missing slices/total slices ratio ≥0.8: Rating 1/5 (poor accuracy)
-    * Combined with dimension consistency analysis
+    * Average missing pixels ratio ≤0.2: Rating 5/5 (excellent accuracy)
+    * Average missing pixels ratio ≥0.8: Rating 1/5 (poor accuracy)
 
-    The function evaluates both dimensional consistency across images and identifies
-    missing or corrupted slices within volumes.
+    The function evaluates pixel completeness on a per-patient basis and averages
+    the missing pixel ratios across all patients.
 
     :param image_paths: List of paths to NRRD image files
     :type image_paths: list
@@ -423,59 +422,51 @@ def check_accuracy_images(image_paths):
     if not image_paths:
         return 0, "No image files found"
 
-    dimension_consistency_issues = 0
-    missing_slices_total = 0
-    total_expected_slices = 0
-    total_volumes = 0
-    dimension_groups = {}
+    patient_data = {}
 
     for path in image_paths:
         try:
+            patient_id = extract_patient_id_from_path(path)
             image = sitk.ReadImage(path)
-            size = image.GetSize()
-            slice_dimensions = (size[0], size[1])
-
-            if slice_dimensions not in dimension_groups:
-                dimension_groups[slice_dimensions] = 0
-            dimension_groups[slice_dimensions] += 1
-
             array = sitk.GetArrayFromImage(image)
-            if len(array.shape) == 3:
-                num_slices = array.shape[0]
-                total_expected_slices += num_slices
 
-                slice_sums = np.sum(array, axis=(1, 2))
-                missing_slices = np.sum(slice_sums == 0)
-                missing_slices_total += missing_slices
+            total_pixels = array.size
+            missing_pixels = np.sum(array == 0)
 
-                total_volumes += 1
+            if patient_id not in patient_data:
+                patient_data[patient_id] = {'missing': 0, 'total': 0}
+
+            patient_data[patient_id]['missing'] += missing_pixels
+            patient_data[patient_id]['total'] += total_pixels
+
         except Exception:
-            dimension_consistency_issues += 1
             continue
 
-    if total_volumes == 0:
-        return 0, "No valid image volumes found"
+    if not patient_data:
+        return 0, "No valid image data found for accuracy analysis"
 
-    most_common_dimensions = max(dimension_groups, key=dimension_groups.get)
-    images_with_different_dimensions = sum(
-        count for dims, count in dimension_groups.items() if dims != most_common_dimensions)
+    patient_missing_ratios = []
+    for patient_id, data in patient_data.items():
+        if data['total'] > 0:
+            ratio = data['missing'] / data['total']
+            patient_missing_ratios.append(ratio)
 
-    dimension_inconsistency_ratio = images_with_different_dimensions / len(image_paths)
-    missing_slices_ratio = missing_slices_total / total_expected_slices if total_expected_slices > 0 else 0
+    if not patient_missing_ratios:
+        return 0, "No valid patient data found for accuracy analysis"
 
-    combined_error_ratio = (dimension_inconsistency_ratio + missing_slices_ratio) / 2
+    avg_missing_ratio = sum(patient_missing_ratios) / len(patient_missing_ratios)
 
-    if combined_error_ratio <= 0.2:
+    if avg_missing_ratio <= 0.2:
         score_rating = 5
-    elif combined_error_ratio >= 0.8:
+    elif avg_missing_ratio >= 0.8:
         score_rating = 1
     else:
-        score_rating = 5 - (combined_error_ratio - 0.2) / 0.15
+        score_rating = 5 - (avg_missing_ratio - 0.2) / 0.15
         score_rating = min(5, max(1, score_rating))
 
     score = (score_rating - 1) / 4
 
-    return score, f"Dimension consistency: {len(image_paths) - images_with_different_dimensions}/{len(image_paths)} images have consistent dimensions. Missing slices: {missing_slices_total}/{total_expected_slices} ({missing_slices_ratio:.1%}). Combined error ratio: {combined_error_ratio:.3f}. Rating: {score_rating:.1f}/5"
+    return score, f"Average missing pixel ratio per patient: {avg_missing_ratio:.3f} ({len(patient_missing_ratios)} patients analyzed). Rating: {score_rating:.1f}/5"
 
 
 def check_coherence_images(image_paths):
