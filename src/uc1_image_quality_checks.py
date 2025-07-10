@@ -282,7 +282,7 @@ def _analyze_age_representativity(clinical_data, column_name, feature_name):
         return score, explanation, details
 
     except Exception as e:
-        return 0, f"Error analyzing {feature_name.lower()} groups", {}
+        return 0, f"Error {e} analyzing {feature_name.lower()} groups", {}
 
 
 def _calculate_representativity_score(class_counts):

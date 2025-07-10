@@ -67,7 +67,6 @@ def check_accuracy(data, expected_ranges):
     if not expected_ranges:
         return 1.0, "No columns selected for accuracy check. Cannot calculate accuracy metric."
 
-    total_samples = len(data)
     total_values_checked = 0
     values_within_range = 0
     error_details = []

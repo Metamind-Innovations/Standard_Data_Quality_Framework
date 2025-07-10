@@ -1,6 +1,6 @@
 matplotlib==3.10.3
 numpy==2.3.1
-pandas==2.3.0
+pandas==2.3.1
 plotly==6.2.0
 streamlit==1.46.1
 simpleitk==2.5.2
