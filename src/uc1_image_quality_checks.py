@@ -21,15 +21,15 @@ def extract_patient_id_from_path(path):
     """
     path_obj = Path(path)
 
-    if '_' in path_obj.parent.name:
-        return path_obj.parent.name.split('_')[0]
-    elif 'LUNG1-' in path_obj.parent.name:
+    if "_" in path_obj.parent.name:
+        return path_obj.parent.name.split("_")[0]
+    elif "LUNG1-" in path_obj.parent.name:
         return path_obj.parent.name
-    elif 'LUNG1-' in path_obj.name:
-        parts = path_obj.name.split('_')
+    elif "LUNG1-" in path_obj.name:
+        parts = path_obj.name.split("_")
         for part in parts:
-            if 'LUNG1-' in part:
-                return part.replace('.nrrd', '').replace('.mha', '')
+            if "LUNG1-" in part:
+                return part.replace(".nrrd", "").replace(".mha", "")
 
     return path_obj.parent.name
 
@@ -56,7 +56,9 @@ def load_clinical_metadata(metadata_path):
     return None
 
 
-def check_population_representativity_images(image_paths, metadata=None, selected_features=None):
+def check_population_representativity_images(
+    image_paths, metadata=None, selected_features=None
+):
     """
     Assess population representativity through class distribution analysis across multiple features.
 
@@ -107,7 +109,9 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
             image_patient_ids.add(patient_id)
 
         # Filter clinical data to only include patients with images
-        available_clinical = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
+        available_clinical = clinical_data[
+            clinical_data["PatientID"].isin(image_patient_ids)
+        ]
 
         if len(available_clinical) == 0:
             return 0, "No clinical data found for patients with images", {}
@@ -115,34 +119,42 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
         # Analyze each selected feature
         for feature_name, column_name in selected_features.items():
             if column_name and column_name in available_clinical.columns:
-                feature_score, feature_explanation, feature_details = _analyze_feature_representativity(
-                    available_clinical, column_name, feature_name
+                feature_score, feature_explanation, feature_details = (
+                    _analyze_feature_representativity(
+                        available_clinical, column_name, feature_name
+                    )
                 )
 
                 feature_scores.append(feature_score)
                 feature_explanations.append(f"{feature_name}: {feature_explanation}")
                 detailed_results[feature_name] = {
-                    'score': feature_score,
-                    'explanation': feature_explanation,
-                    'details': feature_details if feature_details else {}
+                    "score": feature_score,
+                    "explanation": feature_explanation,
+                    "details": feature_details if feature_details else {},
                 }
             else:
                 # Column not found, add with score 0
                 feature_scores.append(0)
-                feature_explanations.append(f"{feature_name}: Column '{column_name}' not found in clinical data")
+                feature_explanations.append(
+                    f"{feature_name}: Column '{column_name}' not found in clinical data"
+                )
                 detailed_results[feature_name] = {
-                    'score': 0,
-                    'explanation': f"Column '{column_name}' not found in clinical data",
-                    'details': {}
+                    "score": 0,
+                    "explanation": f"Column '{column_name}' not found in clinical data",
+                    "details": {},
                 }
 
         if feature_scores:
             # Calculate average score across all selected features
             average_score = sum(feature_scores) / len(feature_scores)
 
-            explanation_parts = feature_explanations[:3]  # Show first 3 in main explanation
+            explanation_parts = feature_explanations[
+                :3
+            ]  # Show first 3 in main explanation
             if len(feature_explanations) > 3:
-                explanation_parts.append(f"and {len(feature_explanations) - 3} more features")
+                explanation_parts.append(
+                    f"and {len(feature_explanations) - 3} more features"
+                )
 
             combined_explanation = f"Multi-feature representativity analysis. {'; '.join(explanation_parts)}."
 
@@ -151,7 +163,11 @@ def check_population_representativity_images(image_paths, metadata=None, selecte
             return 0, "No valid features found for representativity analysis", {}
 
     else:
-        return 0, "No clinical metadata available for population representativity analysis", {}
+        return (
+            0,
+            "No clinical metadata available for population representativity analysis",
+            {},
+        )
 
 
 def _analyze_feature_representativity(clinical_data, column_name, feature_name):
@@ -167,10 +183,12 @@ def _analyze_feature_representativity(clinical_data, column_name, feature_name):
     :return: Tuple of (score, explanation, details)
     :rtype: tuple
     """
-    if 'age' in column_name.lower() or feature_name.lower() == 'age':
+    if "age" in column_name.lower() or feature_name.lower() == "age":
         return _analyze_age_representativity(clinical_data, column_name, feature_name)
     else:
-        return _analyze_categorical_representativity(clinical_data, column_name, feature_name)
+        return _analyze_categorical_representativity(
+            clinical_data, column_name, feature_name
+        )
 
 
 def _analyze_categorical_representativity(clinical_data, column_name, feature_name):
@@ -216,10 +234,10 @@ def _analyze_categorical_representativity(clinical_data, column_name, feature_na
     explanation = f"Balance score {score:.3f} (ideal: {ideal_proportion:.1%} each), Distribution: {details_str}"
 
     details = {
-        'balance_score': score,
-        'ideal_proportion': ideal_proportion,
-        'classes': dict(class_counts),
-        'num_classes': num_classes
+        "balance_score": score,
+        "ideal_proportion": ideal_proportion,
+        "classes": dict(class_counts),
+        "num_classes": num_classes,
     }
 
     return score, explanation, details
@@ -238,17 +256,19 @@ def _analyze_age_representativity(clinical_data, column_name, feature_name):
     :return: Tuple of (score, explanation, details)
     :rtype: tuple
     """
-    age_data = pd.to_numeric(clinical_data[column_name], errors='coerce').dropna()
+    age_data = pd.to_numeric(clinical_data[column_name], errors="coerce").dropna()
 
     if len(age_data) == 0:
         return 0, f"No valid data for {feature_name}", {}
 
     # Create age groups
     age_bins = [0, 40, 55, 70, 120]
-    age_labels = ['<40', '40-54', '55-69', '70+']
+    age_labels = ["<40", "40-54", "55-69", "70+"]
 
     try:
-        age_groups = pd.cut(age_data, bins=age_bins, labels=age_labels, include_lowest=True)
+        age_groups = pd.cut(
+            age_data, bins=age_bins, labels=age_labels, include_lowest=True
+        )
         age_counts = age_groups.value_counts()
 
         # Filter out age groups with 0 people for balance calculation
@@ -272,11 +292,11 @@ def _analyze_age_representativity(clinical_data, column_name, feature_name):
         explanation = f"Age balance score {score:.3f} (ideal: {ideal_proportion:.1%} per group), Distribution: {details_str}"
 
         details = {
-            'balance_score': score,
-            'ideal_proportion': ideal_proportion,
-            'age_groups': dict(age_counts),
-            'mean_age': float(age_data.mean()),
-            'age_range': [float(age_data.min()), float(age_data.max())]
+            "balance_score": score,
+            "ideal_proportion": ideal_proportion,
+            "age_groups": dict(age_counts),
+            "mean_age": float(age_data.mean()),
+            "age_range": [float(age_data.min()), float(age_data.max())],
         }
 
         return score, explanation, details
@@ -370,7 +390,9 @@ def check_metadata_granularity_images(image_paths, metadata=None):
         clinical_data = None
 
     if clinical_data is not None:
-        patients_with_metadata = clinical_data[clinical_data['PatientID'].isin(image_patient_ids)]
+        patients_with_metadata = clinical_data[
+            clinical_data["PatientID"].isin(image_patient_ids)
+        ]
         patients_with_complete_metadata = 0
 
         for _, patient_row in patients_with_metadata.iterrows():
@@ -379,7 +401,11 @@ def check_metadata_granularity_images(image_paths, metadata=None):
             if non_na_fields / total_fields >= 0.5:
                 patients_with_complete_metadata += 1
 
-        ratio = patients_with_complete_metadata / total_patients if total_patients > 0 else 0
+        ratio = (
+            patients_with_complete_metadata / total_patients
+            if total_patients > 0
+            else 0
+        )
 
         if ratio <= 0.2:
             score_rating = 1
@@ -391,7 +417,10 @@ def check_metadata_granularity_images(image_paths, metadata=None):
 
         score = (score_rating - 1) / 4
 
-        return score, f"Patients with metadata: {patients_with_complete_metadata}/{total_patients} ({ratio:.1%}). Rating: {score_rating:.1f}/5"
+        return (
+            score,
+            f"Patients with metadata: {patients_with_complete_metadata}/{total_patients} ({ratio:.1%}). Rating: {score_rating:.1f}/5",
+        )
     else:
         return 0, "No clinical metadata available for metadata granularity analysis"
 
@@ -434,10 +463,10 @@ def check_accuracy_images(image_paths):
             missing_pixels = np.sum(array == 0)
 
             if patient_id not in patient_data:
-                patient_data[patient_id] = {'missing': 0, 'total': 0}
+                patient_data[patient_id] = {"missing": 0, "total": 0}
 
-            patient_data[patient_id]['missing'] += missing_pixels
-            patient_data[patient_id]['total'] += total_pixels
+            patient_data[patient_id]["missing"] += missing_pixels
+            patient_data[patient_id]["total"] += total_pixels
 
         except Exception:
             continue
@@ -447,8 +476,8 @@ def check_accuracy_images(image_paths):
 
     patient_missing_ratios = []
     for patient_id, data in patient_data.items():
-        if data['total'] > 0:
-            ratio = data['missing'] / data['total']
+        if data["total"] > 0:
+            ratio = data["missing"] / data["total"]
             patient_missing_ratios.append(ratio)
 
     if not patient_missing_ratios:
@@ -466,7 +495,10 @@ def check_accuracy_images(image_paths):
 
     score = (score_rating - 1) / 4
 
-    return score, f"Average missing pixel ratio per patient: {avg_missing_ratio:.3f} ({len(patient_missing_ratios)} patients analyzed). Rating: {score_rating:.1f}/5"
+    return (
+        score,
+        f"Average missing pixel ratio per patient: {avg_missing_ratio:.3f} ({len(patient_missing_ratios)} patients analyzed). Rating: {score_rating:.1f}/5",
+    )
 
 
 def check_coherence_images(image_paths):
@@ -521,9 +553,14 @@ def check_coherence_images(image_paths):
     if total_images == 0:
         return 0, "No valid images found for channel analysis"
 
-    most_common_channels = max(channel_counts, key=channel_counts.get) if channel_counts else 1
+    most_common_channels = (
+        max(channel_counts, key=channel_counts.get) if channel_counts else 1
+    )
     images_with_different_channels = sum(
-        count for channels, count in channel_counts.items() if channels != most_common_channels)
+        count
+        for channels, count in channel_counts.items()
+        if channels != most_common_channels
+    )
 
     inconsistency_ratio = images_with_different_channels / total_images
 
@@ -543,7 +580,10 @@ def check_coherence_images(image_paths):
 
     details_str = ", ".join(channel_details)
 
-    return score, f"Channel consistency: {total_images - images_with_different_channels}/{total_images} images have consistent channels ({most_common_channels} channels). Distribution: {details_str}. Inconsistency ratio: {inconsistency_ratio:.3f}. Rating: {score_rating:.1f}/5"
+    return (
+        score,
+        f"Channel consistency: {total_images - images_with_different_channels}/{total_images} images have consistent channels ({most_common_channels} channels). Distribution: {details_str}. Inconsistency ratio: {inconsistency_ratio:.3f}. Rating: {score_rating:.1f}/5",
+    )
 
 
 def check_semantic_coherence_images(image_paths):
@@ -613,7 +653,10 @@ def check_semantic_coherence_images(image_paths):
 
     unique_images = valid_images - duplicate_images
 
-    return score, f"Duplicate detection: {duplicate_images}/{valid_images} images are duplicates ({duplication_ratio:.1%}). Unique images: {unique_images}. Duplication ratio: {duplication_ratio:.3f}. Rating: {score_rating:.1f}/5"
+    return (
+        score,
+        f"Duplicate detection: {duplicate_images}/{valid_images} images are duplicates ({duplication_ratio:.1%}). Unique images: {unique_images}. Duplication ratio: {duplication_ratio:.3f}. Rating: {score_rating:.1f}/5",
+    )
 
 
 def check_completeness_images(image_paths):
@@ -677,7 +720,10 @@ def check_completeness_images(image_paths):
 
     score = (score_rating - 1) / 4
 
-    return score, f"Pixel completeness: {total_pixels - missing_pixels}/{total_pixels} pixels are non-zero ({(1 - missing_ratio):.1%} complete). Missing pixels ratio: {missing_ratio:.3f}. Rating: {score_rating:.1f}/5"
+    return (
+        score,
+        f"Pixel completeness: {total_pixels - missing_pixels}/{total_pixels} pixels are non-zero ({(1 - missing_ratio):.1%} complete). Missing pixels ratio: {missing_ratio:.3f}. Rating: {score_rating:.1f}/5",
+    )
 
 
 def run_all_checks_images(image_paths, metadata=None, selected_features=None):
@@ -702,9 +748,12 @@ def run_all_checks_images(image_paths, metadata=None, selected_features=None):
     """
     results = {}
 
-    results["population_representativity"] = check_population_representativity_images(image_paths, metadata,
-                                                                                      selected_features)
-    results["metadata_granularity"] = check_metadata_granularity_images(image_paths, metadata)
+    results["population_representativity"] = check_population_representativity_images(
+        image_paths, metadata, selected_features
+    )
+    results["metadata_granularity"] = check_metadata_granularity_images(
+        image_paths, metadata
+    )
     results["accuracy"] = check_accuracy_images(image_paths)
     results["coherence"] = check_coherence_images(image_paths)
     results["semantic_coherence"] = check_semantic_coherence_images(image_paths)

@@ -2,3 +2,5 @@ sdqf/
 *.pyc
 .idea
 assets
+.venv
+__pycache__

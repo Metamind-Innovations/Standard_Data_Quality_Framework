@@ -22,12 +22,12 @@ def find_dicom_files(directory):
         for file in files:
             file_path = os.path.join(root, file)
 
-            if file.lower().endswith('.dcm') or file.lower().endswith('.dicom'):
+            if file.lower().endswith(".dcm") or file.lower().endswith(".dicom"):
                 dcm_files.append(file_path)
             else:
                 try:
                     ds = pydicom.dcmread(file_path, stop_before_pixels=True, force=True)
-                    if hasattr(ds, 'SOPClassUID'):
+                    if hasattr(ds, "SOPClassUID"):
                         dcm_files.append(file_path)
                 except:
                     continue
@@ -37,7 +37,7 @@ def find_dicom_files(directory):
             patient_id = None
 
             for part in path_parts:
-                if 'LUNG1-' in part:
+                if "LUNG1-" in part:
                     patient_id = part
                     break
 
@@ -66,11 +66,22 @@ def read_dicom_series(dicom_files):
         try:
             ds = pydicom.dcmread(file_path, force=True)
 
-            if hasattr(ds, 'Modality'):
-                if ds.Modality in ['RTSTRUCT', 'RTPLAN', 'RTDOSE', 'RTIMAGE', 'REG', 'SEG']:
+            if hasattr(ds, "Modality"):
+                if ds.Modality in [
+                    "RTSTRUCT",
+                    "RTPLAN",
+                    "RTDOSE",
+                    "RTIMAGE",
+                    "REG",
+                    "SEG",
+                ]:
                     continue
 
-            if hasattr(ds, 'pixel_array') and hasattr(ds, 'Rows') and hasattr(ds, 'Columns'):
+            if (
+                hasattr(ds, "pixel_array")
+                and hasattr(ds, "Rows")
+                and hasattr(ds, "Columns")
+            ):
                 dicom_slices.append(ds)
 
         except Exception:
@@ -111,7 +122,7 @@ def dicom_to_sitk_image(dicom_slices):
     for ds in dicom_slices:
         pixel_array = ds.pixel_array.astype(np.float64)
 
-        if hasattr(ds, 'RescaleSlope') and hasattr(ds, 'RescaleIntercept'):
+        if hasattr(ds, "RescaleSlope") and hasattr(ds, "RescaleIntercept"):
             slope = float(ds.RescaleSlope)
             intercept = float(ds.RescaleIntercept)
             pixel_array = pixel_array * slope + intercept
@@ -138,9 +149,9 @@ def dicom_to_sitk_image(dicom_slices):
                 pos2 = dicom_slices[1].ImagePositionPatient[2]
                 z_spacing = abs(float(pos2) - float(pos1))
             except (AttributeError, TypeError, IndexError):
-                z_spacing = float(getattr(first_slice, 'SliceThickness', 1.0))
+                z_spacing = float(getattr(first_slice, "SliceThickness", 1.0))
         else:
-            z_spacing = float(getattr(first_slice, 'SliceThickness', 1.0))
+            z_spacing = float(getattr(first_slice, "SliceThickness", 1.0))
 
         sitk_image.SetSpacing((x_spacing, y_spacing, z_spacing))
 
@@ -194,7 +205,7 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
                 patient_output_dir = os.path.join(output_directory, patient_id)
                 os.makedirs(patient_output_dir, exist_ok=True)
 
-                output_path = os.path.join(patient_output_dir, 'image.nrrd')
+                output_path = os.path.join(patient_output_dir, "image.nrrd")
                 sitk.WriteImage(sitk_image, output_path)
 
                 converted_count += 1
@@ -210,7 +221,11 @@ def convert_dcm_to_nrrd(dcm_directory, output_directory="assets/converted_nrrds"
                 message = ""
             return True, message, total_dcm_slices
         else:
-            return False, f"Failed to convert any patients. {failed_count} failures total.", 0
+            return (
+                False,
+                f"Failed to convert any patients. {failed_count} failures total.",
+                0,
+            )
 
     except Exception as e:
         return False, f"Error during DICOM to NRRD conversion: {str(e)}", 0
