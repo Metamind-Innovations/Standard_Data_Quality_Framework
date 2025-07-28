@@ -13,9 +13,11 @@ from src.data_loader import (
     load_metadata,
     save_example_data,
     load_uc2_zip_data,
+    load_uc3_zip_data,
 )
 from src.quality_checks import run_all_checks
 from src.uc2_pgx_quality_checks import run_all_checks_pgx
+from src.uc3_timeseries_quality_checks import run_all_checks_time_series
 from src.rating import get_ratings, get_overall_rating, calculate_rating
 from src.uc1_image_quality_checks import (
     run_all_checks_images,
@@ -50,6 +52,9 @@ if "processed_data" not in st.session_state:
     st.session_state.image_paths = None
     st.session_state.nrrd_directory = None
     st.session_state.total_dcm_slices = 0
+    st.session_state.uc3_patient_data = {}
+    st.session_state.uc3_patient_count = 0
+    st.session_state.uc3_summary_stats = {}
     # Initialize UC1 column selections
     st.session_state.uc1_classes_column = None
     st.session_state.uc1_age_column = None
@@ -212,6 +217,16 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
     }
 
+    calculation_methods_timeseries = {
+        "population_representativity": "Demographic subgroup diversity coverage: (subgroups with all diabetic status values) / (total subgroups). Checks age groups (0-20, 20-40, 40-60, 60-80, 80+) and gender groups for presence of Healthy, Type 1 Diabetes, and Type 2 Diabetes patients (perfect coverage = 1.0)",
+        "metadata_granularity": "Patients with complete demographic metadata / total patients",
+        "accuracy": "values within expected range / total values checked",
+        "coherence": "features with consistent data types / total features",
+        "semantic_coherence": "unique column names / total columns",
+        "completeness": "non-missing values / total values",
+        "relational_consistency": "unique rows / total rows",
+    }
+
     rating_thresholds = """
         - Value 0.0-0.2: Rating 1/5
         - Value 0.2-0.4: Rating 2/5
@@ -224,6 +239,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
         st.session_state.selected_use_case == "Use case 1"
         and st.session_state.image_paths is not None
     )
+
+    is_timeseries_data = st.session_state.selected_use_case == "Use case 3"
 
     for metric, rating_data in ratings.items():
         display_name = metric_names.get(metric, metric)
@@ -245,6 +262,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
                 st.markdown("**Calculation Method:**")
                 if is_image_data and metric in calculation_methods_images:
                     st.write(calculation_methods_images.get(metric))
+                elif is_timeseries_data and metric in calculation_methods_timeseries:
+                    st.write(calculation_methods_timeseries.get(metric))
                 else:
                     st.write(
                         calculation_methods.get(
@@ -522,7 +541,7 @@ def main():
 
     if not use_case_info["implemented"]:
         st.warning(
-            f"⚠️ {selected_use_case} is not yet implemented in this POC. Only Use Case 1 (DuneAI), Use Case 2 (PGx2P), and Use Case 4 (ASCOPD) are currently functional."
+            f"⚠️ {selected_use_case} is not yet implemented in this POC. Only Use Case 1 (DuneAI), Use Case 2 (PGx2P), Use Case 3 (STAR), and Use Case 4 (ASCOPD) are currently functional."
         )
 
     st.sidebar.markdown("---")
@@ -647,6 +666,55 @@ def main():
                     )
             else:
                 st.error("Please upload a valid zip file containing VCF files first!")
+    elif selected_use_case == "Use case 3":
+        uploaded_file = st.sidebar.file_uploader(
+            "Upload your dataset (ZIP containing JSON files)",
+            type="zip",
+        )
+        uploaded_metadata = st.sidebar.file_uploader(
+            "Upload metadata (optional)",
+            type="csv",
+            disabled=True,
+            help="Separate metadata upload is not available for UC3 - All metadata is included in the JSON files",
+        )
+
+        if uploaded_file is not None:
+            try:
+                (
+                    st.session_state.uc3_patient_data,
+                    st.session_state.uc3_patient_count,
+                    st.session_state.uc3_summary_stats,
+                ) = load_uc3_zip_data(uploaded_file)
+
+                if st.session_state.uc3_patient_count > 0:
+                    st.success(
+                        f"ZIP file uploaded successfully! Found {st.session_state.uc3_patient_count} patient JSON files."
+                    )
+                else:
+                    st.warning("ZIP file uploaded but no valid patient data found.")
+
+                if st.session_state.uc3_summary_stats.get("processing_errors"):
+                    st.warning(
+                        f"Some files had processing errors: {len(st.session_state.uc3_summary_stats['processing_errors'])} files"
+                    )
+
+            except Exception as e:
+                st.error(f"Error loading UC3 data: {str(e)}")
+                st.session_state.uc3_patient_data = {}
+                st.session_state.uc3_patient_count = 0
+                st.session_state.uc3_summary_stats = {}
+
+        if st.sidebar.button("Load Data"):
+            if st.session_state.uc3_patient_count > 0:
+                st.session_state.processed_data = st.session_state.uc3_patient_data
+                st.session_state.metadata = None
+                st.session_state.selected_use_case = selected_use_case
+                st.session_state.image_paths = None
+                st.success(
+                    f"Use Case 3 data loaded successfully! {st.session_state.uc3_patient_count} patients ready for analysis."
+                )
+            else:
+                st.error("Please upload a ZIP file containing JSON files first!")
     else:
         uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
         uploaded_metadata = st.sidebar.file_uploader(
@@ -818,6 +886,174 @@ def main():
                     st.session_state.processed_data.head(10),
                     use_container_width=True,
                     hide_index=True,
+                )
+        elif st.session_state.selected_use_case == "Use case 3":
+            st.subheader("Data Preview")
+
+            if st.session_state.uc3_patient_count > 0:
+                st.markdown("### Dataset Overview")
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    st.metric("Total Patients", st.session_state.uc3_patient_count)
+
+                with col2:
+                    total_measurements = sum(
+                        st.session_state.uc3_summary_stats["time_series_availability"]
+                        .get(field, {})
+                        .get("total_measurements", 0)
+                        for field in [
+                            "blood_glucose",
+                            "insulin_infusion",
+                            "enteral_nutrition",
+                            "parenteral_nutrition",
+                        ]
+                    )
+                    st.metric("Total Measurements", total_measurements)
+
+                with col3:
+                    error_count = len(
+                        st.session_state.uc3_summary_stats.get("processing_errors", [])
+                    )
+                    st.metric("Processing Errors", error_count)
+
+                with col4:
+                    avg_episodes = np.mean(
+                        [
+                            p["episode_count"]
+                            for p in st.session_state.uc3_patient_data.values()
+                        ]
+                    )
+                    st.metric("Avg Episodes/Patient", f"{avg_episodes:.1f}")
+
+                # Sample Time Series Data Visualization
+                st.markdown("---")
+                import random
+                import datetime
+
+                eligible_patients = []
+                for (
+                    patient_id,
+                    patient_data,
+                ) in st.session_state.uc3_patient_data.items():
+                    time_series = patient_data["time_series"]
+                    if (
+                        time_series.get("blood_glucose")
+                        and len(time_series["blood_glucose"]) > 0
+                        and time_series.get("insulin_infusion")
+                        and len(time_series["insulin_infusion"]) > 0
+                        and time_series.get("enteral_nutrition")
+                        and len(time_series["enteral_nutrition"]) > 0
+                        and time_series.get("parenteral_nutrition")
+                        and len(time_series["parenteral_nutrition"]) > 0
+                    ):
+                        eligible_patients.append(patient_id)
+
+                if eligible_patients:
+                    random_patient_id = random.choice(eligible_patients)
+                    random_patient = st.session_state.uc3_patient_data[
+                        random_patient_id
+                    ]
+
+                    st.markdown(
+                        f"### Sample Time Series Data (Patient ID: {random_patient_id})"
+                    )
+
+                    time_series_data = random_patient["time_series"]
+
+                    def prepare_time_series_for_plot(data, value_name):
+                        if not data:
+                            return pd.DataFrame()
+
+                        timestamps = [
+                            datetime.datetime.fromtimestamp(ts / 1000) for ts, _ in data
+                        ]
+                        values = [val for _, val in data]
+                        return pd.DataFrame(
+                            {"Timestamp": timestamps, value_name: values}
+                        )
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown("**Blood Glucose (mmol/L)**")
+                        bg_data = time_series_data.get("blood_glucose", [])
+                        bg_df = prepare_time_series_for_plot(bg_data, "Blood Glucose")
+                        fig_bg = px.line(bg_df, x="Timestamp", y="Blood Glucose")
+                        fig_bg.update_layout(height=300)
+                        fig_bg.update_yaxes(title="Blood Glucose (mmol/L)")
+                        st.plotly_chart(
+                            fig_bg,
+                            use_container_width=True,
+                            key=f"bg_{random_patient_id}",
+                        )
+
+                        st.markdown("**Enteral Nutrition Rate (mL/h)**")
+                        enteral_data = time_series_data.get("enteral_nutrition", [])
+                        enteral_df = prepare_time_series_for_plot(
+                            enteral_data, "Enteral Nutrition Rate"
+                        )
+                        fig_enteral = px.line(
+                            enteral_df, x="Timestamp", y="Enteral Nutrition Rate"
+                        )
+                        fig_enteral.update_layout(height=300)
+                        fig_enteral.update_yaxes(title="Enteral Nutrition Rate (mL/h)")
+                        st.plotly_chart(
+                            fig_enteral,
+                            use_container_width=True,
+                            key=f"enteral_{random_patient_id}",
+                        )
+
+                    with col2:
+                        st.markdown("**Insulin Infusion Rate (mL/h)**")
+                        insulin_data = time_series_data.get("insulin_infusion", [])
+                        insulin_df = prepare_time_series_for_plot(
+                            insulin_data, "Insulin Infusion Rate"
+                        )
+                        fig_insulin = px.line(
+                            insulin_df, x="Timestamp", y="Insulin Infusion Rate"
+                        )
+                        fig_insulin.update_layout(height=300)
+                        fig_insulin.update_yaxes(title="Insulin Infusion Rate (mL/h)")
+                        st.plotly_chart(
+                            fig_insulin,
+                            use_container_width=True,
+                            key=f"insulin_{random_patient_id}",
+                        )
+
+                        st.markdown("**Parenteral Nutrition Rate (mL/h)**")
+                        parenteral_data = time_series_data.get(
+                            "parenteral_nutrition", []
+                        )
+                        parenteral_df = prepare_time_series_for_plot(
+                            parenteral_data, "Parenteral Nutrition Rate"
+                        )
+                        fig_parenteral = px.line(
+                            parenteral_df, x="Timestamp", y="Parenteral Nutrition Rate"
+                        )
+                        fig_parenteral.update_layout(height=300)
+                        fig_parenteral.update_yaxes(
+                            title="Parenteral Nutrition Rate (mL/h)"
+                        )
+                        st.plotly_chart(
+                            fig_parenteral,
+                            use_container_width=True,
+                            key=f"parenteral_{random_patient_id}",
+                        )
+                else:
+                    st.warning(
+                        "No patients found with data in all 4 time series categories."
+                    )
+
+                if st.session_state.uc3_summary_stats.get("processing_errors"):
+                    with st.expander("Processing Errors", expanded=False):
+                        for error in st.session_state.uc3_summary_stats[
+                            "processing_errors"
+                        ]:
+                            st.error(error)
+            else:
+                st.info(
+                    "No UC3 data loaded yet. Please upload a ZIP file containing JSON files."
                 )
         else:
             st.subheader("Data Preview")
@@ -1028,6 +1264,49 @@ def main():
                 st.session_state.other_column = (
                     other_column if other_column != "None" else None
                 )
+            elif st.session_state.selected_use_case == "Use case 3":
+                # Use Case 3 (time series) configuration
+                # Define available columns based on UC3 data structure
+                time_series_columns = [
+                    "blood_glucose",
+                    "insulin_infusion",
+                    "enteral_nutrition",
+                    "parenteral_nutrition",
+                ]
+                demographic_columns = ["diabeticStatus", "gender", "age", "weight"]
+
+                target_column = st.selectbox(
+                    "Select Target Column",
+                    options=["None", "blood_glucose"],
+                    help="Select the column to be used as the target variable for calculating population representativity.",
+                    key="target_column_selector",
+                )
+
+                age_column = st.selectbox(
+                    "Select Age Column",
+                    options=["None", "age"],
+                    help="Select the column containing age data for accuracy checks (expected range: 0-120 years).",
+                    key="age_column_selector",
+                )
+
+                validation_options = ["diabeticStatus", "gender", "weight"]
+                other_column = st.selectbox(
+                    "Select Additional Columns for Validation",
+                    options=["None"] + validation_options,
+                    help="Select demographic columns for additional validation checks.",
+                    key="other_column_selector",
+                )
+
+                st.session_state.target_column = (
+                    target_column if target_column != "None" else None
+                )
+                st.session_state.age_column = (
+                    age_column if age_column != "None" else None
+                )
+                st.session_state.other_column = (
+                    other_column if other_column != "None" else None
+                )
+
             else:
                 # Other use cases (UC4, etc.)
                 data_columns = list(st.session_state.processed_data.columns)
@@ -1075,7 +1354,7 @@ def main():
             if all(score > 0 for score in st.session_state.qualitative_scores.values()):
                 if not USE_CASES[st.session_state.selected_use_case]["implemented"]:
                     st.error(
-                        f"⚠️ {st.session_state.selected_use_case} is not yet implemented. Please select Use Case 1, Use Case 2, or Use Case 4."
+                        f"⚠️ {st.session_state.selected_use_case} is not yet implemented. Please select Use Case 1, Use Case 2, Use Case 3, or Use Case 4."
                     )
                 else:
                     with st.spinner("Running quality checks..."):
@@ -1130,11 +1409,41 @@ def main():
                             )
 
                             check_results = run_all_checks_pgx(
-                                st.session_state.processed_data,  # Ground truth data
-                                st.session_state.vcf_data,  # VCF dataframes
-                                st.session_state.vcf_metadata,  # VCF metadata
-                                st.session_state.vcf_filenames,  # VCF filenames
+                                st.session_state.processed_data,
+                                st.session_state.vcf_data,
+                                st.session_state.vcf_metadata,
+                                st.session_state.vcf_filenames,
                                 use_case_config,
+                            )
+                        elif st.session_state.selected_use_case == "Use case 3":
+                            # UC3 time series specific checks
+                            use_case_config = USE_CASES[
+                                st.session_state.selected_use_case
+                            ].copy()
+                            use_case_config["target_column"] = (
+                                st.session_state.target_column
+                            )
+                            use_case_config["age_column"] = st.session_state.age_column
+                            use_case_config["other_column"] = (
+                                st.session_state.other_column
+                            )
+
+                            selected_features = {}
+                            if st.session_state.target_column:
+                                selected_features["target"] = (
+                                    st.session_state.target_column
+                                )
+                            if st.session_state.age_column:
+                                selected_features["age"] = st.session_state.age_column
+                            if st.session_state.other_column:
+                                selected_features["other"] = (
+                                    st.session_state.other_column
+                                )
+
+                            check_results = run_all_checks_time_series(
+                                st.session_state.uc3_patient_data,
+                                use_case_config,
+                                selected_features if selected_features else None,
                             )
                         else:
                             use_case_config = USE_CASES[
@@ -1230,6 +1539,10 @@ def main():
         elif selected_use_case == "Use case 2":
             st.info(
                 "Please upload a ZIP file containing VCF files and CSV ground truth labels, then click 'Load Data' to begin."
+            )
+        elif selected_use_case == "Use case 3":
+            st.info(
+                "Please upload a ZIP file containing the JSON files corresponding to each patient, then click 'Load Data' to begin."
             )
         else:
             st.info("Please upload a dataset and click 'Load Data' to begin.")

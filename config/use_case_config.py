@@ -133,8 +133,24 @@ USE_CASES = {
     "Use case 3": {
         "name": "STAR",
         "description": "Glucose control in intensive care units",
-        "implemented": False,
+        "implemented": True,
         "data_type": "time_series",
+        "column_types": {
+            "age": "numeric",
+            "gender": "categorical",
+            "diabeticStatus": "categorical",
+            "weight": "numeric",
+            "blood_glucose": "numeric",
+            "insulin_infusion": "numeric",
+            "enteral_nutrition": "numeric",
+            "parenteral_nutrition": "numeric",
+        },
+        "expected_ranges": {
+            "age": (0, 120),
+            "gender": ["Male", "Female"],
+            "diabeticStatus": [0, 1, 2],
+            "weight": (0, 300),
+        },
     },
     "Use case 4": {
         "name": "ASCOPD",
