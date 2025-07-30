@@ -1284,15 +1284,14 @@ def main():
 
                 age_column = st.selectbox(
                     "Select Age Column",
-                    options=["None", "age"],
+                    options=["None"] + demographic_columns,
                     help="Select the column containing age data for accuracy checks (expected range: 0-120 years).",
                     key="age_column_selector",
                 )
 
-                validation_options = ["diabeticStatus", "gender", "weight"]
                 other_column = st.selectbox(
                     "Select Additional Columns for Validation",
-                    options=["None"] + validation_options,
+                    options=["None"] + demographic_columns,
                     help="Select demographic columns for additional validation checks.",
                     key="other_column_selector",
                 )
