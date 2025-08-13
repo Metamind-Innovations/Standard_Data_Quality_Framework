@@ -38,6 +38,7 @@ if "processed_data" not in st.session_state:
     st.session_state.target_column = None
     st.session_state.age_column = None
     st.session_state.height_column = None
+    st.session_state.other_column = None
     st.session_state.temp_data = None
     st.session_state.temp_metadata = None
     st.session_state.temp_ground_truth = None
@@ -60,6 +61,12 @@ if "processed_data" not in st.session_state:
     st.session_state.uc1_age_column = None
     st.session_state.uc1_gender_column = None
     st.session_state.uc1_subpopulation_column = None
+    # Initialize UC4 variables
+    st.session_state.uc4_data = None
+    st.session_state.uc4_target_data = None
+    st.session_state.uc4_age_column = None
+    st.session_state.uc4_gender_column = None
+    st.session_state.uc4_subpopulation_column = None
 
 QUALITATIVE_DIMENSIONS = {
     "accessibility": {
@@ -546,6 +553,7 @@ def main():
 
     st.sidebar.markdown("---")
 
+    # ---------- Files upload per use case ----------
     if selected_use_case == "Use case 1":
         dcm_directory = st.sidebar.text_input(
             "Path to DCM files directory",
@@ -715,6 +723,70 @@ def main():
                 )
             else:
                 st.error("Please upload a ZIP file containing JSON files first!")
+
+    elif selected_use_case == "Use case 4":
+        uploaded_files = st.sidebar.file_uploader(
+            "Upload your dataset (CSV with tabular clinical data) and the target data (CSV with target column)",
+            accept_multiple_files=True,  # because will accept X and Y in separated files
+            type="csv",
+        )
+        uploaded_metadata = st.sidebar.file_uploader(
+            "Upload metadata (optional)",
+            type="csv",
+            disabled=True,
+            help="Separate metadata upload is not available for UC4",
+        )
+        
+        if uploaded_files is not None:
+            st.session_state.temp_csv_data = []  # define a list to store X and Y dfs
+            for uploaded_file in uploaded_files:
+                # load each df and store in list
+                try:
+                    st.session_state.temp_csv_data.append(load_data(uploaded_file))
+                except Exception as e:
+                    st.error(f"Error loading UC4 data: {str(e)}")
+                    st.session_state.temp_csv_data = None
+
+        if st.sidebar.button("Load Data"):
+            if st.session_state.temp_csv_data is not None:
+
+                # check which of the list items is X and Y and store each one to a variable
+                st.session_state.processed_data = (
+                    st.session_state.temp_csv_data[0]
+                    if len(st.session_state.temp_csv_data[0].columns) > 1
+                    else st.session_state.temp_csv_data[1]
+                )  # X (features)
+                st.session_state.uc4_target_data = (
+                    st.session_state.temp_csv_data[1]
+                    if len(st.session_state.temp_csv_data[1].columns) == 1
+                    else st.session_state.temp_csv_data[0]
+                )  # Y (target)
+
+                st.session_state.selected_use_case = selected_use_case
+                st.session_state.metadata = None
+                st.session_state.image_paths = None
+
+                # check that both files have the same number of records
+                if len(st.session_state.processed_data) != len(
+                    st.session_state.uc4_target_data
+                ):
+                    st.error(
+                        f"X and Y must have the same number of records. X has {len(st.session_state.processed_data)} and Y has {len(st.session_state.uc4_target_data)}. Please upload the correct CSV files!"
+                    )
+
+                else:
+                    if len(st.session_state.processed_data) == 0:
+                        st.error(
+                            f"X and Y cannot be empty. Please upload the correct CSV files!"
+                        )
+                    else:
+                        st.success(
+                            f"UC4 Data loaded successfully! {len(st.session_state.processed_data)} records with clinical data ready for analysis."
+                        )
+                        st.session_state.uc4_data = st.session_state.processed_data
+            else:
+                st.error("Please upload the CSV files containing the data first!")
+
     else:
         uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
         uploaded_metadata = st.sidebar.file_uploader(
@@ -745,9 +817,12 @@ def main():
             else:
                 st.error("Please upload a dataset first!")
 
+    # ---------- End of files upload per use case ----------
+
     if (st.session_state.processed_data is not None) or (
         st.session_state.image_paths is not None
     ):
+        # ---------- Dataset overview per use case ----------
         if st.session_state.image_paths is not None:
             st.subheader("Image Data Overview")
             st.write(
@@ -1055,13 +1130,44 @@ def main():
                 st.info(
                     "No UC3 data loaded yet. Please upload a ZIP file containing JSON files."
                 )
+
+        elif st.session_state.selected_use_case == "Use case 4":
+            st.subheader("Data Preview")
+
+            if st.session_state.uc4_data is not None:
+                colX, colY = st.columns([5, 1])  # 5:1 width ratio
+
+                with colX:
+                    st.markdown("**Clinical Input Data:**")
+                    st.dataframe(
+                        st.session_state.uc4_data.head(10),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                with colY:
+                    st.markdown("**Clinical Target Variable:**")
+                    st.dataframe(
+                        st.session_state.uc4_target_data.head(10),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            else:
+                st.info(
+                    "No UC4 data loaded yet. Please upload CSV files containing the dataset."
+                )
+
         else:
             st.subheader("Data Preview")
             st.dataframe(st.session_state.processed_data, use_container_width=True)
 
         st.markdown("---")
         st.subheader("Qualitative Check Configuration")
-
+        
+        # ---------- End of Dataset overview per use case ----------
+        
+        # ---------- Quality metrics values set ----------
         col1, col2 = st.columns([1, 3])
         with col1:
             qualitative_file = st.file_uploader(
@@ -1111,6 +1217,9 @@ def main():
             score = int(selected_option[0])
             st.session_state.qualitative_scores[key] = score
 
+        # ---------- End of Quality metrics values set ----------
+
+        # ---------- Quantity check columns configuration ----------
         st.markdown("---")
         st.subheader("Quantitative Check Configuration")
 
@@ -1305,9 +1414,73 @@ def main():
                 st.session_state.other_column = (
                     other_column if other_column != "None" else None
                 )
+            
+            elif st.session_state.selected_use_case == "Use case 4":
+                # Use Case 4 (tabular data) configuration
+                # Define available columns based on UC4 data structure
 
+                # target column pre-selected, one per dataset type
+                target_column = st.session_state.uc4_target_data.columns[0]
+                
+                expected_targets = USE_CASES.get(st.session_state.selected_use_case).get("target_column")
+                # check if target column exists in expected target columns
+                if not any(target_column.lower() in x for x in list(map(str.lower, expected_targets))):
+                    target_column = None  # if ir does not exist
+                
+                st.text(f"Target column for calculating population representativity: {target_column}.")
+
+                dataset_columns = st.session_state.uc4_data.columns
+
+                # option to select age for population analysis
+                # first find age column in dataset, then give option in selectbox
+                age_column_name = [x for x in dataset_columns if "age" in x.lower()]
+                age_column = st.selectbox(
+                    "Select Age Column",
+                    options=["None"] + age_column_name,
+                    help="Select the column containing age data for population representativity analysis.",
+                    key="age_column_selector",
+                )
+
+                # option to select gender for population analysis
+                # first find gender column in dataset, then give option in selectbox
+                gender_column_name = [x for x in dataset_columns if "sex" in x.lower() or "gender" in x.lower()]
+                gender_column = st.selectbox(
+                    "Select Gender Column",
+                    options=["None"] + gender_column_name,
+                    help="Select the column containing gender data for population representativity analysis.",
+                    key="gender_column_selector",
+                )
+
+                # subpopulation dropdown (optional)
+                # exclude the age and gender columns (if selected)
+                excluded_cols = [age_column, gender_column]
+                
+                subpop_options = ["None"] + [
+                    x for x in dataset_columns if x not in excluded_cols
+                ]
+
+                subpopulation_column = st.selectbox(
+                    "Select Subpopulation Column (Optional)",
+                    options=subpop_options,
+                    help="Select an optional column for subpopulation representativity analysis.",
+                    key="subpopulation_column_selector",
+                )
+
+                # set target column and selected columns
+                st.session_state.uc4_target_column = target_column
+                
+                st.session_state.uc4_age_column = (
+                    age_column if age_column != "None" else None
+                )
+                st.session_state.uc4_gender_column = (
+                    gender_column if gender_column != "None" else None
+                )
+                st.session_state.uc4_subpopulation_column = (
+                    subpopulation_column if subpopulation_column != "None" else None
+                )
+            
             else:
-                # Other use cases (UC4, etc.)
+                # Other use case (UC5)
                 data_columns = list(st.session_state.processed_data.columns)
                 available_target, available_age, available_other = (
                     get_use_case_specific_columns(
@@ -1348,6 +1521,10 @@ def main():
                 st.session_state.other_column = (
                     other_numeric_column if other_numeric_column != "None" else None
                 )
+
+        # ---------- End of Quantity check columns configuration ----------
+
+        # ---------- All checks execution ----------
 
         if st.button("Run Quality Checks", type="primary"):
             if all(score > 0 for score in st.session_state.qualitative_scores.values()):
@@ -1489,7 +1666,10 @@ def main():
                 st.error(
                     "Please complete all qualitative assessment questions before running quality checks!"
                 )
+        
+        # ---------- End of checks execution ----------
 
+        # ---------- Display results ----------
         if (
             st.session_state.ratings is not None
             and st.session_state.qualitative_ratings is not None
@@ -1529,6 +1709,8 @@ def main():
             st.markdown("---")
             st.subheader("Detailed Quantitative Scores")
             display_metrics(st.session_state.ratings, "Quantitative")
+        
+        # ---------- End of Display results ----------
 
     else:
         if selected_use_case == "Use case 1":
@@ -1542,6 +1724,10 @@ def main():
         elif selected_use_case == "Use case 3":
             st.info(
                 "Please upload a ZIP file containing the JSON files corresponding to each patient, then click 'Load Data' to begin."
+            )
+        elif selected_use_case == "Use case 4":
+            st.info(
+                "Please upload a CSV file containing the tabular clinical data and a CSV containing the target clinical data, then click 'Load Data' to begin."
             )
         else:
             st.info("Please upload a dataset and click 'Load Data' to begin.")
