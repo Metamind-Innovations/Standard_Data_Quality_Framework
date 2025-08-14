@@ -738,7 +738,7 @@ def main():
             disabled=True,
             help="Separate metadata upload is not available for UC4",
         )
-        
+
         if uploaded_files is not None:
             st.session_state.temp_csv_data = []  # define a list to store X and Y dfs
             for uploaded_file in uploaded_files:
@@ -1166,9 +1166,9 @@ def main():
 
         st.markdown("---")
         st.subheader("Qualitative Check Configuration")
-        
+
         # ---------- End of Dataset overview per use case ----------
-        
+
         # ---------- Quality metrics values set ----------
         col1, col2 = st.columns([1, 3])
         with col1:
@@ -1416,20 +1416,27 @@ def main():
                 st.session_state.other_column = (
                     other_column if other_column != "None" else None
                 )
-            
+
             elif st.session_state.selected_use_case == "Use case 4":
                 # Use Case 4 (tabular data) configuration
                 # Define available columns based on UC4 data structure
 
                 # target column pre-selected, one per dataset type
                 target_column = st.session_state.uc4_target_data.columns[0]
-                
-                expected_targets = USE_CASES.get(st.session_state.selected_use_case).get("target_column")
+
+                expected_targets = USE_CASES.get(
+                    st.session_state.selected_use_case
+                ).get("target_column")
                 # check if target column exists in expected target columns
-                if not any(target_column.lower() in x for x in list(map(str.lower, expected_targets))):
+                if not any(
+                    target_column.lower() in x
+                    for x in list(map(str.lower, expected_targets))
+                ):
                     target_column = None  # if ir does not exist
-                
-                st.text(f"Target column for calculating population representativity: {target_column}.")
+
+                st.text(
+                    f"Target column for calculating population representativity: {target_column}."
+                )
 
                 dataset_columns = st.session_state.uc4_data.columns
 
@@ -1445,7 +1452,11 @@ def main():
 
                 # option to select gender for population analysis
                 # first find gender column in dataset, then give option in selectbox
-                gender_column_name = [x for x in dataset_columns if "sex" in x.lower() or "gender" in x.lower()]
+                gender_column_name = [
+                    x
+                    for x in dataset_columns
+                    if "sex" in x.lower() or "gender" in x.lower()
+                ]
                 gender_column = st.selectbox(
                     "Select Gender Column",
                     options=["None"] + gender_column_name,
@@ -1456,7 +1467,7 @@ def main():
                 # subpopulation dropdown (optional)
                 # exclude the age and gender columns (if selected)
                 excluded_cols = [age_column, gender_column]
-                
+
                 subpop_options = ["None"] + [
                     x for x in dataset_columns if x not in excluded_cols
                 ]
@@ -1470,7 +1481,7 @@ def main():
 
                 # set target column and selected columns
                 st.session_state.uc4_target_column = target_column
-                
+
                 st.session_state.uc4_age_column = (
                     age_column if age_column != "None" else None
                 )
@@ -1480,7 +1491,7 @@ def main():
                 st.session_state.uc4_subpopulation_column = (
                     subpopulation_column if subpopulation_column != "None" else None
                 )
-            
+
             else:
                 # Other use case (UC5)
                 data_columns = list(st.session_state.processed_data.columns)
@@ -1623,10 +1634,10 @@ def main():
                                 use_case_config,
                                 selected_features if selected_features else None,
                             )
-                        
+
                         elif st.session_state.selected_use_case == "Use case 4":
                             # UC4 tabular data specific quantity checks
-                            
+
                             # keep use case config for analysis
                             use_case_config = USE_CASES[
                                 st.session_state.selected_use_case
@@ -1637,7 +1648,7 @@ def main():
                                 "target": st.session_state.uc4_target_column,
                                 "age": st.session_state.uc4_age_column,
                                 "gender": st.session_state.uc4_gender_column,
-                                "subpopulation": st.session_state.uc4_subpopulation_column
+                                "subpopulation": st.session_state.uc4_subpopulation_column,
                             }
 
                             # run quantity checks for uc4
@@ -1647,7 +1658,7 @@ def main():
                                 uc_conf=use_case_config,
                                 selected_feat=selected_features,
                             )
-                        
+
                         else:
                             # Fallback for other use cases not implemented (e.g. 5)
                             use_case_config = USE_CASES[
@@ -1694,7 +1705,7 @@ def main():
                 st.error(
                     "Please complete all qualitative assessment questions before running quality checks!"
                 )
-        
+
         # ---------- End of checks execution ----------
 
         # ---------- Display results ----------
@@ -1737,7 +1748,7 @@ def main():
             st.markdown("---")
             st.subheader("Detailed Quantitative Scores")
             display_metrics(st.session_state.ratings, "Quantitative")
-        
+
         # ---------- End of Display results ----------
 
     else:
