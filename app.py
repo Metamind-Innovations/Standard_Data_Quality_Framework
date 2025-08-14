@@ -23,6 +23,7 @@ from src.uc1_image_quality_checks import (
     run_all_checks_images,
     extract_patient_id_from_path,
 )
+from src.uc4_tabular_quality_checks import run_all_checks_tabular
 from src.utils import convert_dcm_to_nrrd
 
 st.set_page_config(
@@ -64,6 +65,7 @@ if "processed_data" not in st.session_state:
     # Initialize UC4 variables
     st.session_state.uc4_data = None
     st.session_state.uc4_target_data = None
+    st.session_state.uc4_target_column = None
     st.session_state.uc4_age_column = None
     st.session_state.uc4_gender_column = None
     st.session_state.uc4_subpopulation_column = None
@@ -1621,7 +1623,33 @@ def main():
                                 use_case_config,
                                 selected_features if selected_features else None,
                             )
+                        
+                        elif st.session_state.selected_use_case == "Use case 4":
+                            # UC4 tabular data specific quantity checks
+                            
+                            # keep use case config for analysis
+                            use_case_config = USE_CASES[
+                                st.session_state.selected_use_case
+                            ].copy()
+
+                            # construct selected features dict for analysis
+                            selected_features = {
+                                "target": st.session_state.uc4_target_column,
+                                "age": st.session_state.uc4_age_column,
+                                "gender": st.session_state.uc4_gender_column,
+                                "subpopulation": st.session_state.uc4_subpopulation_column
+                            }
+
+                            # run quantity checks for uc4
+                            check_results = run_all_checks_tabular(
+                                tabular_data=st.session_state.uc4_data,
+                                target_data=st.session_state.uc4_target_data,
+                                uc_conf=use_case_config,
+                                selected_feat=selected_features,
+                            )
+                        
                         else:
+                            # Fallback for other use cases not implemented (e.g. 5)
                             use_case_config = USE_CASES[
                                 st.session_state.selected_use_case
                             ].copy()
