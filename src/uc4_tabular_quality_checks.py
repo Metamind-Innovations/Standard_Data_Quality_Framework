@@ -341,6 +341,87 @@ def check_metadata_granularity(
         return 1, "No metadata available for Use Case 4."
 
 
+def check_accuracy(
+    data: pd.DataFrame, expected_ranges: Dict[str, Tuple[float, float]]
+) -> Tuple[float, str]:
+    """Check how many values in specified columns fall within expected numeric ranges.
+
+    Args:
+        data (pd.DataFrame): The tabular dataset containing numeric columns to check.
+        expected_ranges (Dict[str, Tuple[float, float]]): Dictionary where keys are column names
+            and values are tuples specifying the acceptable (min, max) range for that column.
+
+    Returns:
+        Tuple[float, str]:
+            - Accuracy ratio (0.0-1.0) of values within acceptable ranges.
+            - Detailed message summarizing results and any columns with out-of-range values.
+    """
+
+    # If no expected ranges provided, return "perfect" score with message
+    if not expected_ranges:
+        return (
+            1.0,
+            "No columns selected for accuracy check. Cannot calculate accuracy metric.",
+        )
+
+    total_values_checked = 0  # Total numeric values across all columns
+    values_within_range = 0  # Count of values falling within the specified ranges
+    columns_checked = 0  # Number of columns successfully checked
+    error_details = []  # Collect messages for columns with out-of-range values
+
+    for column, acceptable_values in expected_ranges.items():
+        if column in data.columns:
+
+            # Count non-NaN values in this column
+            num_column_values = data[column].count().__int__()
+
+            # Count values within the specified range
+            column_acceptable_values = (
+                data[column]
+                .between(acceptable_values[0], acceptable_values[1])
+                .sum()
+                .__int__()
+            )
+
+            # Track number of values checked and within the acceptable range
+            columns_checked += 1
+            total_values_checked += num_column_values
+            values_within_range += column_acceptable_values
+
+            # Track number of values outside the acceptable range
+            outside_acceptable = num_column_values - column_acceptable_values
+            if outside_acceptable > 0:
+                error_details.append(
+                    f"{column}: {outside_acceptable}/{num_column_values} values not in acceptable range {acceptable_values}"
+                )
+
+    # Handle edge cases where no columns were checked
+    if columns_checked == 0:
+        return (
+            1.0,
+            "Selected columns not found tabular data. Cannot calculate accuracy.",
+        )
+
+    if total_values_checked == 0:
+        return 1.0, "No numeric values found in tabular data columns."
+
+    # Compute accuracy ratio
+    accuracy_ratio = values_within_range / total_values_checked
+
+    # Prepare detailed message including any errors
+    if error_details:
+        details_str = ", ".join(error_details)
+        return (
+            accuracy_ratio,
+            f"Checked {columns_checked} column(s). {values_within_range}/{total_values_checked} values ({accuracy_ratio:.1%}) are within the acceptable ranges. Issues: {details_str}",
+        )
+    else:
+        return (
+            accuracy_ratio,
+            f"Checked {columns_checked} column(s). All {total_values_checked} values are within the acceptable ranges.",
+        )
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -353,6 +434,10 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results["metadata_granularity"] = check_metadata_granularity(
         tabular_data=tabular_data, target_data=target_data
+    )
+
+    results["accuracy"] = check_accuracy(
+        data=tabular_data, exp_ranges=uc_conf.get("expected_ranges")
     )
 
     return results
