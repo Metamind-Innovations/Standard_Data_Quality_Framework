@@ -562,6 +562,60 @@ def check_semantic_coherence_tabular(data: pd.DataFrame) -> Tuple[float, str]:
         )
 
 
+def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
+    """
+    Evaluate completeness of a tabular dataset by checking for missing values (NaNs).
+
+    Args:
+        data (pd.DataFrame): The input tabular dataset.
+
+    Returns:
+        Tuple[float, str]:
+            - A completeness ratio (float between 0 and 1).
+            - A descriptive message summarizing completeness and any missing values per column.
+    """
+
+    # Total number of values in the dataframe
+    total_values = data.size
+
+    # Handle edge case, empty dataframe
+    if total_values == 0:
+        return 1.0, "No data to check."
+
+    # Count total missing values across all columns
+    total_missing_values = data.isna().sum().sum().__int__()
+
+    # Compute number of non-missing values and completeness ratio
+    complete_values = total_values - total_missing_values
+    completeness_ratio = complete_values / total_values
+
+    if total_missing_values > 0:
+        # Collect missing value details per column
+        missing_details = []
+
+        for col in data.columns:
+            col_missing = int(data[col].isna().sum())
+            col_total = int(data[col].size)
+
+            if col_missing > 0:
+                col_percent = (col_missing / col_total) * 100
+                missing_details.append(f"{col}: {col_missing} ({col_percent:.1f}%)")
+
+        # Join details into a readable string
+        missing_details = ", ".join(missing_details)
+
+        return (
+            completeness_ratio,
+            f"Data completeness: {complete_values}/{total_values} ({completeness_ratio:.1%}). Missing values by column: {missing_details}",
+        )
+    else:
+        # No missing values, perfect completeness
+        return (
+            completeness_ratio,
+            f"No missing values found in tabular data. Data is 100% complete.",
+        )
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -585,5 +639,7 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
     )
 
     results["semantic_coherence"] = check_semantic_coherence_tabular(data=tabular_data)
+
+    results["completeness"] = check_completeness_tabular(data=tabular_data)
 
     return results
