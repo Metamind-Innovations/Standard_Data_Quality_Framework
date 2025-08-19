@@ -422,6 +422,95 @@ def check_accuracy_tabular(
         )
 
 
+def check_coherence_tabular(
+    data: pd.DataFrame, exp_col_types: Dict[str, str]
+) -> Tuple[float, str]:
+    """
+    Check if the columns in a tabular DataFrame conform to expected data types.
+    Validates each specified column against its expected type ("numeric" or "categorical")
+    and returns a coherence score and a descriptive message.
+
+    Args:
+        data (pd.DataFrame): The tabular data to check.
+        exp_col_types (Dict[str, str]): A dictionary mapping column names to expected types.
+
+    Returns:
+        Tuple[float, str]:
+            - Coherence ratio (0.0 to 1.0) indicating the fraction of consistent columns.
+            - Message describing the check result and any inconsistencies.
+    """
+
+    # If no expected types provided, cannot check coherence
+    if not exp_col_types:
+        return 1.0, "No column type specifications provided. Cannot check coherence."
+
+    total_features_checked = 0
+    consistent_features = 0
+    inconsistent_details = []
+
+    # Set a generic number of categories for categorical columns
+    number_of_expected_categories = 20
+
+    for column, expected_type in exp_col_types.items():
+
+        column_consistent = True
+
+        # Skip columns not present in the DataFrame
+        if not column in data.columns:
+            continue
+
+        if expected_type == "numeric":
+
+            # Check if column is numeric type
+            if not pd.api.types.is_numeric_dtype(data[column]):
+                column_consistent = False
+
+                # Count non-numeric entries (excluding NaNs)
+                non_numeric_count = (
+                    data[column].apply(pd.to_numeric, errors="coerce").isna().sum()
+                    - data[column].isna().sum()
+                ).__int__()
+
+                inconsistent_details.append(
+                    f"{column}: Expected numeric but contains {non_numeric_count} non-numeric values."
+                )
+
+        elif expected_type == "categorical":
+            # For categorical, check if the number of unique values is reasonable
+            unique_vals = data[column].dropna().nunique()
+
+            if unique_vals > number_of_expected_categories:
+                column_consistent = False
+
+            inconsistent_details.append(
+                f"{column}: Expected categorical but has {unique_vals} unique values (too many for UC4 categorical)."
+            )
+
+        total_features_checked += 1
+
+        if column_consistent:
+            consistent_features += 1
+
+    # If no expected features were found in the DataFrame
+    if total_features_checked == 0:
+        return 1.0, "Expected features not found in tabular data columns."
+
+    # Calculate coherence as ratio as fraction of consistent features
+    coherence_ratio = consistent_features / total_features_checked
+
+    if inconsistent_details:
+        details = ", ".join(inconsistent_details)
+        return (
+            coherence_ratio,
+            f"Checked {total_features_checked} feture(s). {consistent_features}/{total_features_checked} features have consistent data types. Issues: {details}",
+        )
+    else:
+        return (
+            coherence_ratio,
+            f"Checked {total_features_checked} feture(s). All {total_features_checked} features have consistent data types.",
+        )
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -438,6 +527,10 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results["accuracy"] = check_accuracy_tabular(
         data=tabular_data, exp_ranges=uc_conf.get("expected_ranges")
+    )
+
+    results["coherence"] = check_coherence_tabular(
+        data=tabular_data, exp_col_types=uc_conf.get("column_types")
     )
 
     return results
