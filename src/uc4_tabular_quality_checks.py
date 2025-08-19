@@ -317,7 +317,7 @@ def check_population_representativity_tabular(
     return overall_score, merged_explanation, detailed_results
 
 
-def check_metadata_granularity(
+def check_metadata_granularity_tabular(
     tabular_data: pd.DataFrame,
     target_data: pd.DataFrame,
     metadata: Optional[pd.DataFrame] = None,
@@ -341,7 +341,7 @@ def check_metadata_granularity(
         return 1, "No metadata available for Use Case 4."
 
 
-def check_accuracy(
+def check_accuracy_tabular(
     data: pd.DataFrame, expected_ranges: Dict[str, Tuple[float, float]]
 ) -> Tuple[float, str]:
     """Check how many values in specified columns fall within expected numeric ranges.
@@ -432,11 +432,11 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
         selected_features=selected_feat,
     )
 
-    results["metadata_granularity"] = check_metadata_granularity(
+    results["metadata_granularity"] = check_metadata_granularity_tabular(
         tabular_data=tabular_data, target_data=target_data
     )
 
-    results["accuracy"] = check_accuracy(
+    results["accuracy"] = check_accuracy_tabular(
         data=tabular_data, exp_ranges=uc_conf.get("expected_ranges")
     )
 
