@@ -483,9 +483,9 @@ def check_coherence_tabular(
             if unique_vals > number_of_expected_categories:
                 column_consistent = False
 
-            inconsistent_details.append(
-                f"{column}: Expected categorical but has {unique_vals} unique values (too many for UC4 categorical)."
-            )
+                inconsistent_details.append(
+                    f"{column}: Expected categorical but has {unique_vals} unique values (too many for UC4 categorical)."
+                )
 
         total_features_checked += 1
 
@@ -716,7 +716,7 @@ def run_all_checks_tabular(
 
     # Check whether values fall within expected ranges
     results["accuracy"] = check_accuracy_tabular(
-        data=tabular_data, exp_ranges=uc_conf.get("expected_ranges")
+        data=tabular_data, expected_ranges=uc_conf.get("expected_ranges")
     )
 
     # Check consistency of column data types
