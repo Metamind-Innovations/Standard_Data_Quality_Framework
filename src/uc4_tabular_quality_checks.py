@@ -616,6 +616,66 @@ def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
         )
 
 
+def check_relational_consistency_tabular(data: pd.DataFrame) -> Tuple[float, str]:
+    """
+    Check relational consistency of tabular data by identifying duplicate rows.
+
+    Args:
+        data (pd.DataFrame): Input tabular dataset to check.
+
+    Returns:
+        Tuple[float, str]:
+            - Consistency ratio (float between 0 and 1), where 1.0 means all rows are unique.
+            - A descriptive message summarizing whether duplicates were found.
+    """
+
+    # Total number of rows in dataset
+    total_rows = len(data)
+
+    # Handle case of empty dataframe
+    if total_rows == 0:
+        return 1.0, "No data to check."
+
+    # Count unique rows by dropping duplicates
+    unique_rows = len(data.drop_duplicates())
+
+    # Ratio of unique rows to total rows
+    consistency_ratio = unique_rows / total_rows
+
+    # Number of duplicate rows
+    duplicate_rows = total_rows - unique_rows
+
+    if duplicate_rows > 0:
+        # Boolean mask of duplicated rows
+        duplicated_mask = data.duplicated(keep="first")
+        # Get indices of duplicated rows
+        duplicated_indices = data[duplicated_mask].index.tolist()
+
+        # Percentage of duplicates relative to dataset size
+        duplicate_perc = duplicate_rows / total_rows
+
+        # Show at most 10 duplicate indices for readability
+        if len(duplicated_indices) > 10:
+            indices_str = str(duplicated_indices[:10])[:-1] + ", ...]"
+        else:
+            indices_str = str(duplicated_indices)
+
+        # Details for duplicate rows in text format
+        duplicate_details = f"{duplicate_rows} duplicate rows out of {total_rows} ({duplicate_perc:.1%}), indices: {indices_str}"
+
+        return (
+            consistency_ratio,
+            f"Found duplicate rows in tabular data ({total_rows} rows checked in total). {unique_rows} rows are unique. Duplicates details: {duplicate_details}.",
+        )
+
+    else:
+        # All rows are unique, perfect relational consistency
+        return (
+            consistency_ratio,
+            f"No duplicate rows found in tabular data. All {total_rows} rows are unique.",
+        )
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -641,5 +701,9 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
     results["semantic_coherence"] = check_semantic_coherence_tabular(data=tabular_data)
 
     results["completeness"] = check_completeness_tabular(data=tabular_data)
+
+    results["relational_consistency"] = check_relational_consistency_tabular(
+        data=tabular_data
+    )
 
     return results
