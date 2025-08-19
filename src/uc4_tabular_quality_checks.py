@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Tuple, Dict, Any, Optional
+from collections import Counter
 
 
 def _calculate_representativity_score(
@@ -511,6 +512,56 @@ def check_coherence_tabular(
         )
 
 
+def check_semantic_coherence_tabular(data: pd.DataFrame) -> Tuple[float, str]:
+    """
+    Check the semantic coherence of a tabular DataFrame by verifying column name uniqueness.
+
+    Args:
+        data (pd.DataFrame): The DataFrame to check.
+
+    Returns:
+        Tuple[float, str]:
+            - Coherence ratio (0.0 to 1.0) representing the fraction of unique columns.
+            - Message describing whether duplicate column names were found.
+    """
+
+    # Total number of columns in the DataFrame
+    num_columns = data.columns.__len__()
+
+    # If no columns exist, return perfect score (nothing to check)
+    if num_columns == 0:
+        return 1.0, "No columns found in tabular data."
+
+    # Identify columns that appear more than once
+    duplicate_columns = [
+        name for name, count in Counter(list(data.columns)).items() if count > 1
+    ]
+    num_duplicates = len(duplicate_columns)
+
+    # Count of unique columns
+    unique_columns = num_columns - num_duplicates
+
+    # Prepare duplicate details for message
+    if num_duplicates > 0:
+        duplicate_list = [f"'{name}'" for name in duplicate_columns]
+        duplicate_details = ", ".join(duplicate_list)
+
+    # Coherence ratio = fraction of unique columns
+    coherence_ratio = unique_columns / num_columns
+
+    if num_duplicates == 0:
+        return (
+            1.0,
+            f"No duplicate column names found. All column names are unique.",
+        )
+    else:
+        return (
+            coherence_ratio,
+            f"Found duplicate column names. Duplicates: {duplicate_details}. "
+            f"Overall coherence: {unique_columns}/{num_columns} unique columns.",
+        )
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -532,5 +583,7 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
     results["coherence"] = check_coherence_tabular(
         data=tabular_data, exp_col_types=uc_conf.get("column_types")
     )
+
+    results["semantic_coherence"] = check_semantic_coherence_tabular(data=tabular_data)
 
     return results
