@@ -221,7 +221,7 @@ def check_population_representativity_tabular(
     Args:
         tabular_data (pd.DataFrame): DataFrame containing clinical data.
         target_data (pd.DataFrame): DataFrame containing the target/label variable.
-        selected_features (Dict[str]): Mapping of logical feature names to
+        selected_features (Dict[str, Optional[str]]): Mapping of logical feature names to
                                        actual column names in the input data.
 
     Returns:
@@ -676,32 +676,61 @@ def check_relational_consistency_tabular(data: pd.DataFrame) -> Tuple[float, str
         )
 
 
-def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
+def run_all_checks_tabular(
+    tabular_data: pd.DataFrame,
+    target_data: pd.DataFrame,
+    uc_conf: Dict[str, Any],
+    selected_feat: Dict[str, Optional[str]],
+) -> Dict[str, Tuple[float, str]]:
+    """
+    Run all tabular data quality checks and return results in a dictionary.
 
+    Args:
+        tabular_data (pd.DataFrame): Main dataset (X) to validate.
+        target_data (pd.DataFrame): Target data (Y) for some checks.
+        uc_conf (Dict[str, Any]): Use case configuration dictionary.
+        selected_features (Dict[str, Optional[str]]):
+            Dictionary of selected features to include in the population representativity check.
+
+    Returns:
+        Dict[str, Tuple[float, str]]:
+            A dictionary mapping each check name to a tuple:
+            - Score (float between 0 and 1).
+            - Descriptive message string.
+    """
+
+    # Initialize results dict
     results = {}
 
+    # Check how well the dataset represents population across selected features
     results["population_representativity"] = check_population_representativity_tabular(
         tabular_data=tabular_data,
         target_data=target_data,
         selected_features=selected_feat,
     )
 
+    # Check metadata availability and granularity
     results["metadata_granularity"] = check_metadata_granularity_tabular(
         tabular_data=tabular_data, target_data=target_data
     )
 
+    # Check whether values fall within expected ranges
     results["accuracy"] = check_accuracy_tabular(
         data=tabular_data, exp_ranges=uc_conf.get("expected_ranges")
     )
 
+    # Check consistency of column data types
     results["coherence"] = check_coherence_tabular(
         data=tabular_data, exp_col_types=uc_conf.get("column_types")
     )
 
+    # Check for semantic issues like duplicate column names
     results["semantic_coherence"] = check_semantic_coherence_tabular(data=tabular_data)
 
+    # Check for missing values and completeness of data
     results["completeness"] = check_completeness_tabular(data=tabular_data)
 
+    # Check for duplicate rows to ensure relational consistency
     results["relational_consistency"] = check_relational_consistency_tabular(
         data=tabular_data
     )
