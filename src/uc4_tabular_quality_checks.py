@@ -317,6 +317,30 @@ def check_population_representativity_tabular(
     return overall_score, merged_explanation, detailed_results
 
 
+def check_metadata_granularity(
+    tabular_data: pd.DataFrame,
+    target_data: pd.DataFrame,
+    metadata: Optional[pd.DataFrame] = None,
+) -> Tuple[int, str]:
+    """Check metadata granularity for a given dataset and target.
+    This function evaluates whether metadata is provided for a dataset.
+
+    Args:
+        tabular_data (pd.DataFrame): The main tabular dataset under analysis.
+        target_data (pd.DataFrame): The target dataset (labels, outcomes, etc.).
+        metadata (Optional[pd.DataFrame]): Metadata describing the dataset. Defaults to None.
+
+    Returns:
+        Tuple[int, str]:
+            - An integer status code (1 indicates missing metadata).
+            - A descriptive message about metadata availability.
+    """
+
+    # If metadata DataFrame is not provided, return score 1 with a message
+    if metadata is None:
+        return 1, "No metadata available for Use Case 4."
+
+
 def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
 
     results = {}
@@ -325,6 +349,10 @@ def run_all_checks_tabular(tabular_data, target_data, uc_conf, selected_feat):
         tabular_data=tabular_data,
         target_data=target_data,
         selected_features=selected_feat,
+    )
+
+    results["metadata_granularity"] = check_metadata_granularity(
+        tabular_data=tabular_data, target_data=target_data
     )
 
     return results
