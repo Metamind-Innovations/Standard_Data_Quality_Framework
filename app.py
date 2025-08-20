@@ -236,6 +236,16 @@ def display_metrics(ratings, metric_type="Quantitative"):
         "relational_consistency": "unique rows / total rows",
     }
 
+    calculation_methods_tabular = {
+        "population_representativity": "Multi-feature analysis: computes a balance score for each selected feature and for the target, then averages them into a mean balance score (1.0 = perfect balance, 0.0 = maximum imbalance).",
+        "metadata_granularity": "Metadata are not provided for this use case",
+        "accuracy": "values within expected range / total values checked",
+        "coherence": "features with consistent data types / total features",
+        "semantic_coherence": "unique column names / total columns",
+        "completeness": "non-missing values / total values",
+        "relational_consistency": "unique rows / total rows",
+    }
+
     rating_thresholds = """
         - Value 0.0-0.2: Rating 1/5
         - Value 0.2-0.4: Rating 2/5
@@ -250,6 +260,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
     )
 
     is_timeseries_data = st.session_state.selected_use_case == "Use case 3"
+
+    is_tabular_data = st.session_state.selected_use_case == "Use case 4"
 
     for metric, rating_data in ratings.items():
         display_name = metric_names.get(metric, metric)
@@ -273,6 +285,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
                     st.write(calculation_methods_images.get(metric))
                 elif is_timeseries_data and metric in calculation_methods_timeseries:
                     st.write(calculation_methods_timeseries.get(metric))
+                elif is_tabular_data and metric in calculation_methods_tabular:
+                    st.write(calculation_methods_tabular.get(metric))
                 else:
                     st.write(
                         calculation_methods.get(
@@ -288,8 +302,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
                     fig = px.pie(
                         values=[rating, 5 - rating],
                         names=["Score", "Remaining"],
+                        color=["Score", "Remaining"],
                         hole=0.7,
-                        color_discrete_sequence=["#1f77b4", "#e0e0e0"],
+                        color_discrete_map={
+                           "Score": "#1f77b4",
+                           "Remaining": "#e0e0e0",
+                        },
                     )
                     fig.update_layout(
                         showlegend=False,
@@ -304,6 +322,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
                             )
                         ],
                     )
+                    fig.update_traces(sort=False, direction="clockwise")
                     st.plotly_chart(
                         fig, use_container_width=True, key=f"{metric_type}_{metric}_pie"
                     )
@@ -340,8 +359,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                     feature_fig = px.pie(
                                         values=[feature_rating, 5 - feature_rating],
                                         names=["Score", "Remaining"],
+                                        color=["Score", "Remaining"],
                                         hole=0.6,
-                                        color_discrete_sequence=["#ff7f0e", "#e0e0e0"],
+                                        color_discrete_map={
+                                            "Score": "#ff7f0e",
+                                            "Remaining": "#e0e0e0",
+                                        },
                                         title=f"{feature_name}",
                                     )
                                     feature_fig.update_layout(
@@ -360,6 +383,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                         title_x=0.5,
                                         title_font_size=14,
                                     )
+                                    feature_fig.update_traces(sort=False, direction="clockwise")
                                     st.plotly_chart(
                                         feature_fig,
                                         use_container_width=True,
@@ -750,7 +774,7 @@ def main():
                     st.session_state.temp_csv_data = None
 
         if st.sidebar.button("Load Data"):
-            if st.session_state.temp_csv_data is not None:
+            if (st.session_state.temp_csv_data is not None) and (st.session_state.temp_csv_data != []):
 
                 # check which of the list items is X and Y and store each one to a variable
                 st.session_state.processed_data = (

@@ -113,7 +113,10 @@ def _analyze_categorical_representativity(
         details_str += f" and {len(categ_details) - 3} more"
 
     # Create explanation string
-    explanation = f"Balance score {score:.3f} (ideal: {ideal_proportion:.1%} each), Distribution: {details_str}"
+    feat_name_to_show = (
+        feature_name if feature_name[0].isupper() else feature_name.capitalize()
+    )
+    explanation = f"{feat_name_to_show} balance score {score:.3f} (ideal: {ideal_proportion:.1%} each), Distribution: {details_str}"
 
     # Collect detailed results
     details = {
