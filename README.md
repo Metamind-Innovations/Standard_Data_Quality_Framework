@@ -57,6 +57,20 @@ qualitative and quantitative metrics, with specialized support for medical imagi
 6. **Completeness**: Missing pixel analysis across all images
 7. **Relational Consistency**: File integrity and patient ID format validation
 
+### UC2-VCF Quality Metrics
+
+### UC3-Time Series Quality Metrics
+
+### UC4-Tabular Data Quality Metrics
+
+1. **Population Representativity**: Distribution balance across selected features and the target variable
+2. **Metadata Granularity**: Not implemented for UC4 (metadata are not available in this use case)
+3. **Accuracy**: Validation of values in the tabular dataset that fall within expected ranges or categories
+4. **Coherence**: Consistent data types validation across feature columns
+5. **Semantic Coherence**: Duplicate column names detection
+6. **Completeness**: Missing data detection across all columns
+7. **Relational Consistency**: Duplicate rows detection
+
 ## 🛠️ Installation
 
 ### Prerequisites
@@ -130,11 +144,15 @@ streamlit run app.py
 4. **Assessment**: Complete qualitative questionnaire and run quantitative checks
 5. **Results**: Review image-specific quality metrics and clinical correlations
 
+### Use Case 2 (PGx2P) - VCF Data Workflow
+
+### Use Case 3 (STAR) - Time Series Data Workflow
+
 ### Use Case 4 (ASCOPD) - Tabular Data Workflow
 
-1. **Upload CSV**: Select your COPD/Asthma patient dataset
-2. **Metadata** (optional): Upload additional metadata CSV
-3. **Column selection**: Choose target variable, age column, and validation columns
+1. **Upload CSV**: Select your COPD/Asthma patient dataset (CSV file with features and CSV file with target)
+2. **Metadata**: No metadata available for this use case
+3. **Column selection**: Choose target variable, age column, gender column or a subpopulation column
 4. **Assessment**: Complete qualitative questionnaire
 5. **Run checks**: Execute both qualitative and quantitative assessments
 6. **Results**: Review comprehensive quality analysis with clinical range validation
@@ -143,24 +161,27 @@ streamlit run app.py
 
 ```
 standard-data-quality-framework/
-├── app.py                            # Main Streamlit application (UI logic only)
-├── requirements.txt                  # Python dependencies
-├── README.md                         # Project documentation
-├── assets/                           # Sample data and templates
-│   ├── example_data.csv              # Sample ASCOPD dataset
-│   ├── converted_nrrds/              # Output directory for NRRD conversions
-│   └── qualitative_template.json     # Qualitative assessment template
-├── config/                           # Configuration files
-│   └── use_case_config.py            # Use case definitions and parameters
-├── src/                              # Source code modules
-│   ├── __init__.py                   # Package initialization
-│   ├── utils.py                      # DCM to NRRD conversion utilities (NEW)
-│   ├── data_loader.py                # Data loading utilities
-│   ├── quality_checks.py             # Tabular data quality checks
-│   ├── rating.py                     # Rating calculation system
-│   └── uc1_image_quality_checks.py   # Image quality assessment functions
-└── dicom_radiomics_dataset/          # Sample UC1 clinical data
-    └── NSCLC-Radiomics-metadata.csv  # Metadata file containing patient information
+├── app.py                               # Main Streamlit application (UI logic only)
+├── requirements.txt                     # Python dependencies
+├── README.md                            # Project documentation
+├── assets/                              # Sample data and templates
+│   ├── example_data.csv                 # Sample ASCOPD dataset
+│   ├── converted_nrrds/                 # Output directory for NRRD conversions
+│   └── qualitative_template.json        # Qualitative assessment template
+├── config/                              # Configuration files
+│   └── use_case_config.py               # Use case definitions and parameters
+├── src/                                 # Source code modules
+│   ├── __init__.py                      # Package initialization
+│   ├── utils.py                         # DCM to NRRD conversion utilities (NEW)
+│   ├── data_loader.py                   # Data loading utilities
+│   ├── quality_checks.py                # Rest of use cases data quality checks
+│   ├── rating.py                        # Rating calculation system
+│   ├── uc1_image_quality_checks.py      # Image quality assessment functions
+│   ├── uc2_pgx_quality_checks.py        # VCF quality assessment functions
+│   ├── uc3_timeseries_quality_checks.py # Time series quality assessment functions
+│   └── uc4_tabular_quality_checks.py    # Tabular data quality assessment functions
+└── dicom_radiomics_dataset/             # Sample UC1 clinical data
+    └── NSCLC-Radiomics-metadata.csv     # Metadata file containing patient information
 ```
 
 ## 📈 Scoring System
