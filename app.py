@@ -202,12 +202,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
 
     calculation_methods = {
         "population_representativity": "Score based on how balanced class distribution is (perfect balance = 1.0)",
-        "metadata_granularity": "patients with metadata / total patients",
-        "accuracy": "values within expected range / total values checked",
-        "coherence": "features with consistent data types / total features",
-        "semantic_coherence": "unique column names / total columns",
-        "completeness": "non-missing values / total values",
-        "relational_consistency": "unique rows / total rows",
+        "metadata_granularity": "Patients with metadata / Total patients",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
         "accessibility": "User assessment based on data obtainability and clarity",
         "use_permissiveness": "User assessment based on license permissiveness",
         "availability": "User assessment based on data availability and access",
@@ -219,31 +219,31 @@ def display_metrics(ratings, metric_type="Quantitative"):
 
     calculation_methods_images = {
         "population_representativity": "Multi-feature analysis: balanced distribution score across selected features (perfect balance = 1.0, maximum imbalance = 0.0)",
-        "metadata_granularity": "Patients with complete metadata / total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
-        "accuracy": "Combined score: slice dimension consistency + missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
+        "metadata_granularity": "Patients with complete metadata / Total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
+        "accuracy": "Combined score: Slice dimension consistency + Missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
         "coherence": "Number of channels consistency across images (≤0.2 inconsistency = 5/5, ≥0.8 inconsistency = 1/5)",
         "semantic_coherence": "Duplicate image detection using array hash comparison (≤0.2 duplication = 5/5, ≥0.8 duplication = 1/5)",
-        "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
+        "completeness": "Missing pixels / Total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
     }
 
     calculation_methods_timeseries = {
         "population_representativity": "Demographic subgroup diversity coverage: (subgroups with all diabetic status values) / (total subgroups). Checks age groups (0-20, 20-40, 40-60, 60-80, 80+) and gender groups for presence of Healthy, Type 1 Diabetes, and Type 2 Diabetes patients (perfect coverage = 1.0)",
         "metadata_granularity": "Patients with complete demographic metadata / total patients",
-        "accuracy": "values within expected range / total values checked",
-        "coherence": "features with consistent data types / total features",
-        "semantic_coherence": "unique column names / total columns",
-        "completeness": "non-missing values / total values",
-        "relational_consistency": "unique rows / total rows",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
     }
 
     calculation_methods_tabular = {
-        "population_representativity": "Multi-feature analysis: computes a balance score for each selected feature and for the target, then averages them into a mean balance score (1.0 = perfect balance, 0.0 = maximum imbalance).",
+        "population_representativity": "Multi-feature analysis: Computes a balance score for each selected feature and for the target, then averages them into a mean balance score (1.0 = perfect balance, 0.0 = maximum imbalance).",
         "metadata_granularity": "Metadata are not provided for this use case",
-        "accuracy": "values within expected range / total values checked",
-        "coherence": "features with consistent data types / total features",
-        "semantic_coherence": "unique column names / total columns",
-        "completeness": "non-missing values / total values",
-        "relational_consistency": "unique rows / total rows",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
     }
 
     rating_thresholds = """
