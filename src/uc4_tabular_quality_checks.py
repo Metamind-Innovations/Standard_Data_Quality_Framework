@@ -336,13 +336,13 @@ def check_metadata_granularity_tabular(
 
     Returns:
         Tuple[int, str]:
-            - An integer status code (1 indicates missing metadata).
+            - An integer status code (0 indicates missing metadata).
             - A descriptive message about metadata availability.
     """
 
-    # If metadata DataFrame is not provided, return score 1 with a message
+    # If metadata DataFrame is not provided, return score 0 with a message
     if metadata is None:
-        return 1, "No metadata available for Use Case 4."
+        return 0, "No metadata available for Use Case 4."
 
 
 def check_accuracy_tabular(
