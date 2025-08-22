@@ -305,8 +305,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
                         color=["Score", "Remaining"],
                         hole=0.7,
                         color_discrete_map={
-                           "Score": "#1f77b4",
-                           "Remaining": "#e0e0e0",
+                            "Score": "#1f77b4",
+                            "Remaining": "#e0e0e0",
                         },
                     )
                     fig.update_layout(
@@ -383,7 +383,9 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                         title_x=0.5,
                                         title_font_size=14,
                                     )
-                                    feature_fig.update_traces(sort=False, direction="clockwise")
+                                    feature_fig.update_traces(
+                                        sort=False, direction="clockwise"
+                                    )
                                     st.plotly_chart(
                                         feature_fig,
                                         use_container_width=True,
@@ -774,7 +776,9 @@ def main():
                     st.session_state.temp_csv_data = None
 
         if st.sidebar.button("Load Data"):
-            if (st.session_state.temp_csv_data is not None) and (st.session_state.temp_csv_data != []):
+            if (st.session_state.temp_csv_data is not None) and (
+                st.session_state.temp_csv_data != []
+            ):
 
                 # check which of the list items is X and Y and store each one to a variable
                 st.session_state.processed_data = (
@@ -1462,45 +1466,56 @@ def main():
                     f"Target column for calculating population representativity: {target_column}."
                 )
 
-                dataset_columns = st.session_state.uc4_data.columns
+                # Create mutually exclusive dropdowns
+                dataset_columns = st.session_state.uc4_data.columns.to_list()
+
+                age_selected = st.session_state.get("age_column_selector", "None")
+                gender_selected = st.session_state.get("gender_column_selector", "None")
+                subpop_selected = st.session_state.get(
+                    "subpopulation_column_selector", "None"
+                )
+
+                age_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [gender_selected, subpop_selected]
+                ]
+                gender_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [age_selected, subpop_selected]
+                ]
+                subpop_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [age_selected, gender_selected]
+                ]
 
                 # option to select age for population analysis
-                # first find age column in dataset, then give option in selectbox
-                age_column_name = [x for x in dataset_columns if "age" in x.lower()]
                 age_column = st.selectbox(
                     "Select Age Column",
-                    options=["None"] + age_column_name,
+                    options=age_options,
                     help="Select the column containing age data for population representativity analysis.",
                     key="age_column_selector",
+                    index=age_options.index(age_selected),
                 )
 
                 # option to select gender for population analysis
-                # first find gender column in dataset, then give option in selectbox
-                gender_column_name = [
-                    x
-                    for x in dataset_columns
-                    if "sex" in x.lower() or "gender" in x.lower()
-                ]
                 gender_column = st.selectbox(
                     "Select Gender Column",
-                    options=["None"] + gender_column_name,
+                    options=gender_options,
                     help="Select the column containing gender data for population representativity analysis.",
                     key="gender_column_selector",
+                    index=gender_options.index(gender_selected),
                 )
 
-                # subpopulation dropdown (optional)
-                # exclude the age and gender columns (if selected)
-                excluded_cols = [age_column, gender_column]
-
-                subpop_options = ["None"] + [
-                    x for x in dataset_columns if x not in excluded_cols
-                ]
-
+                # option to select subpopulation column for population analysis
                 subpopulation_column = st.selectbox(
                     "Select Subpopulation Column (Optional)",
                     options=subpop_options,
                     help="Select an optional column for subpopulation representativity analysis.",
                     key="subpopulation_column_selector",
+                    index=subpop_options.index(subpop_selected),
                 )
 
                 # set target column and selected columns
