@@ -780,40 +780,61 @@ def main():
                 st.session_state.temp_csv_data != []
             ):
 
-                # check which of the list items is X and Y and store each one to a variable
-                st.session_state.processed_data = (
-                    st.session_state.temp_csv_data[0]
-                    if len(st.session_state.temp_csv_data[0].columns) > 1
-                    else st.session_state.temp_csv_data[1]
-                )
-                st.session_state.uc4_target_data = (
-                    st.session_state.temp_csv_data[1]
-                    if len(st.session_state.temp_csv_data[1].columns) == 1
-                    else st.session_state.temp_csv_data[0]
-                )
-
                 st.session_state.selected_use_case = selected_use_case
                 st.session_state.metadata = None
                 st.session_state.image_paths = None
 
-                # check that both files have the same number of records
-                if len(st.session_state.processed_data) != len(
-                    st.session_state.uc4_target_data
-                ):
-                    st.error(
-                        f"X and Y must have the same number of records. X has {len(st.session_state.processed_data)} and Y has {len(st.session_state.uc4_target_data)}. Please upload the correct CSV files!"
-                    )
+                available_targets_uc4 = USE_CASES.get(
+                    st.session_state.selected_use_case
+                ).get("target_column")
 
+                # check which of the list items is X and Y and store each one to a variable
+                st.session_state.uc4_target_data = next(
+                    (
+                        df
+                        for df in st.session_state.temp_csv_data
+                        if any(col in df.columns for col in available_targets_uc4)
+                    ),
+                    None,
+                )
+
+                if st.session_state.uc4_target_data is not None:
+                    st.session_state.processed_data = next(
+                        (
+                            df
+                            for df in st.session_state.temp_csv_data
+                            if df is not st.session_state.uc4_target_data
+                        ),
+                        None,
+                    )
                 else:
-                    if len(st.session_state.processed_data) == 0:
+                    st.session_state.processed_data = None
+
+                if (st.session_state.uc4_target_data is not None) and (
+                    st.session_state.processed_data is not None
+                ):
+                    # check that both files have the same number of records
+                    if len(st.session_state.processed_data) != len(
+                        st.session_state.uc4_target_data
+                    ):
                         st.error(
-                            f"X and Y cannot be empty. Please upload the correct CSV files!"
+                            f"X and Y must have the same number of records. X has {len(st.session_state.processed_data)} and Y has {len(st.session_state.uc4_target_data)}. Please upload the correct CSV files!"
                         )
+
                     else:
-                        st.success(
-                            f"UC4 Data loaded successfully! {len(st.session_state.processed_data)} records with clinical data ready for analysis."
-                        )
-                        st.session_state.uc4_data = st.session_state.processed_data
+                        if len(st.session_state.processed_data) == 0:
+                            st.error(
+                                f"X and Y cannot be empty. Please upload the correct CSV files!"
+                            )
+                        else:
+                            st.success(
+                                f"UC4 Data loaded successfully! {len(st.session_state.processed_data)} records with clinical data ready for analysis."
+                            )
+                            st.session_state.uc4_data = st.session_state.processed_data
+                else:
+                    st.error(
+                        "Could not detect features or target DataFrame. Please check the CSV files and try again!"
+                    )
             else:
                 st.error("Please upload the CSV files containing the data first!")
 
