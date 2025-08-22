@@ -12,6 +12,8 @@ def _calculate_representativity_score(
     This function measures representativity by comparing the actual category proportions
     to an ideal balanced distribution. A perfect balance (equal counts across categories)
     returns a score of 1.0, while maximum imbalance (all samples in one category) returns 0.0.
+    Calculates the absolute deviation from the ideal proportion for each category.
+    Deviation is converted into balance score (1, 0).
 
     Args:
         cat_counts (pd.DataFrame): DataFrame containing at least a 'count' column
@@ -24,27 +26,19 @@ def _calculate_representativity_score(
             - Ideal proportion if all categories were perfectly balanced.
     """
 
-    num_categories = len(cat_counts)  # Number of unique categories
-    tot_samples = sum(
-        cat_counts["count"]
-    )  # Total number of samples across all categories
+    num_categories = len(cat_counts)
+    tot_samples = sum(cat_counts["count"])
 
-    # Ideal proportion if all categories were perfectly balanced
     ideal_proportion = 1 / num_categories
 
-    # Calculate actual proportion for each category
     cat_counts["act_prop"] = cat_counts["count"] / tot_samples
-
-    # Calculate absolute deviation from the ideal proportion for each category
     cat_counts["abs_dev"] = (ideal_proportion - cat_counts["act_prop"]).abs()
 
-    # Total deviation across all categories
     total_deviation = sum(cat_counts["abs_dev"])
 
     # Maximum possible deviation (case where one category has all samples, others have zero)
     max_deviation = 2 * (1 - ideal_proportion)
 
-    # Convert deviation into balance score: 1 = perfect balance, 0 = maximum imbalance
     balance_score = 1.0 - (total_deviation / max_deviation)
 
     # Ensure the score stays within [0.0, 1.0]
@@ -60,6 +54,7 @@ def _analyze_categorical_representativity(
     This function evaluates how balanced the distribution of categories is for a given feature
     by comparing actual category proportions to an ideal balanced distribution. It returns
     a representativity score, an explanatory string, and detailed statistics.
+    Limits explanation to first three categories for readability.
 
     Args:
         data (pd.DataFrame):
@@ -76,15 +71,12 @@ def _analyze_categorical_representativity(
             - dict: Detailed results dictionary.
     """
 
-    # Remove NaN values to ensure only valid data is analyzed
     col_data = data[column].copy().dropna()
     total_samples = len(col_data)
 
-    # If there are no valid samples, return a score of 0
     if total_samples == 0:
         return 0, f"No valid data for {feature_name}", {}
 
-    # Count the number of samples in each category
     category_counts = col_data.value_counts()
     category_counts_dict = category_counts.to_dict()
 
@@ -97,17 +89,14 @@ def _analyze_categorical_representativity(
     if num_categories <= 1:
         return 0, f"Only one {feature_name.lower()} category found", {}
 
-    # Calculate balance score and ideal proportion
     score, category_counts, ideal_proportion = _calculate_representativity_score(
         category_counts
     )
 
-    # Prepare category details for explanation
     categ_details = []
     for _, row in category_counts.iterrows():
         categ_details.append(f"'{row[column]}': {row["count"]} ({row["act_prop"]:.1%})")
 
-    # Limit explanation to first three categories for readability
     details_str = ", ".join(categ_details[:3])
     if len(categ_details) > 3:
         details_str += f" and {len(categ_details) - 3} more"
@@ -118,7 +107,6 @@ def _analyze_categorical_representativity(
     )
     explanation = f"{feat_name_to_show} balance score {score:.3f} (ideal: {ideal_proportion:.1%} each), Distribution: {details_str}"
 
-    # Collect detailed results
     details = {
         "balance_score": score,
         "ideal_proportion": ideal_proportion,
@@ -151,11 +139,9 @@ def _analyze_age_representativity(
     age_data = pd.to_numeric(data[column], errors="coerce").dropna()
     total_samples = len(age_data)
 
-    # If no valid ages remain, return 0 score
     if total_samples == 0:
         return 0, f"No valid data for {feature_name}", {}
 
-    # Define age bins and labels
     age_bins = [0, 40, 55, 70, 120]
     age_labels = ["<40", "40-54", "55-69", "70+"]
 
@@ -164,15 +150,12 @@ def _analyze_age_representativity(
         age_data, bins=age_bins, labels=age_labels, include_lowest=True, right=True
     )
 
-    # Count patients per age group
     age_counts = age_groups.value_counts()
     age_counts_dict = age_counts.to_dict()
 
-    # Keep only non-empty groups for score calculation
     non_empty_age_counts = age_counts[age_counts > 0]
     num_age_categories = len(non_empty_age_counts)
 
-    # If there is not enough diversity in age groups, return 0 score
     if num_age_categories <= 1:
         return 0, f"Insufficient {feature_name.lower()} group diversity", {}
 
@@ -184,7 +167,6 @@ def _analyze_age_representativity(
         non_empty_age_counts
     )
 
-    # Prepare summary of distribution for explanation
     age_group_details = []
     for _, row in non_empty_age_counts.iterrows():
         age_group_details.append(
@@ -197,7 +179,6 @@ def _analyze_age_representativity(
 
     explanation = f"Age balance score {score:.3f} (ideal: {ideal_proportion:.1%} per group), Distribution: {details_str}"
 
-    # Costruct details dictionary
     details = {
         "balance_score": score,
         "ideal_proportion": ideal_proportion,
@@ -234,7 +215,6 @@ def check_population_representativity_tabular(
             - Dictionary of detailed per-feature results.
     """
 
-    # If all selected features are None, nothing to analyze
     non_valid_features = (
         0,
         "No valid features found for representativity analysis",
@@ -244,12 +224,10 @@ def check_population_representativity_tabular(
     if all(x is None for x in selected_features.values()):
         return non_valid_features
 
-    # Initialize empty merged analysis results
     feature_scores = {}
     feature_explanations = {}
     detailed_results = {}
 
-    # Union of all column names across tabular and target data
     all_columns = set(tabular_data.columns) | set(target_data.columns)
 
     for feat, column_name in selected_features.items():
@@ -258,7 +236,6 @@ def check_population_representativity_tabular(
         if not column_name:
             continue
 
-        # If the column exists in either tabular_data or target_data
         if column_name in all_columns:
 
             if feat == "target":
@@ -270,7 +247,6 @@ def check_population_representativity_tabular(
                 )
 
             elif feat in {"gender", "subpopulation"}:
-                # Analyze categorical demographic features
                 feature_score, feature_explanation, feature_details = (
                     _analyze_categorical_representativity(
                         data=tabular_data, column=column_name, feature_name=feat
@@ -278,7 +254,6 @@ def check_population_representativity_tabular(
                 )
 
             elif feat == "age":
-                # Analyze age using age-binned representativity
                 feature_score, feature_explanation, feature_details = (
                     _analyze_age_representativity(
                         data=tabular_data, column=column_name, feature_name=feat
@@ -292,14 +267,12 @@ def check_population_representativity_tabular(
                     {},
                 )
         else:
-            # Column not found in provided data
             feature_score, feature_explanation, feature_details = (
                 0,
                 f"{feat}: Column '{column_name}' not found in clinical data",
                 {},
             )
 
-        # Save results for this feature
         feature_scores[feat] = feature_score
         feature_explanations[feat] = feature_explanation
 
@@ -309,13 +282,10 @@ def check_population_representativity_tabular(
             "details": feature_details,
         }
 
-    # Return in case no features were processed
     if not feature_scores:
         return non_valid_features
 
-    # Compute overall score as the average of all feature scores
     overall_score = sum(feature_scores.values()) / len(feature_scores)
-    # Combine explanations into one summary
     merged_explanation = f"Multi-feature representativity analysis. {'; '.join(feature_explanations.values())}."
 
     return overall_score, merged_explanation, detailed_results
@@ -328,6 +298,7 @@ def check_metadata_granularity_tabular(
 ) -> Tuple[int, str]:
     """Check metadata granularity for a given dataset and target.
     This function evaluates whether metadata is provided for a dataset.
+    If metadata DataFrame is not provided, returns score 0 with a message.
 
     Args:
         tabular_data (pd.DataFrame): The main tabular dataset under analysis.
@@ -340,7 +311,6 @@ def check_metadata_granularity_tabular(
             - A descriptive message about metadata availability.
     """
 
-    # If metadata DataFrame is not provided, return score 0 with a message
     if metadata is None:
         return 0, "No metadata available for Use Case 4."
 
@@ -348,7 +318,9 @@ def check_metadata_granularity_tabular(
 def check_accuracy_tabular(
     data: pd.DataFrame, expected_ranges: Dict[str, Tuple[float, float]]
 ) -> Tuple[float, str]:
-    """Check how many values in specified columns fall within expected numeric ranges.
+    """
+    Check how many values in specified columns fall within expected numeric ranges.
+    Calculates accuracy ratio and prepares detailed message including any errors.
 
     Args:
         data (pd.DataFrame): The tabular dataset containing numeric columns to check.
@@ -361,17 +333,16 @@ def check_accuracy_tabular(
             - Detailed message summarizing results and any columns with out-of-range values.
     """
 
-    # If no expected ranges provided, return "perfect" score with message
     if not expected_ranges:
         return (
             1.0,
             "No columns selected for accuracy check. Cannot calculate accuracy metric.",
         )
 
-    total_values_checked = 0  # Total numeric values across all columns
-    values_within_range = 0  # Count of values falling within the specified ranges
-    columns_checked = 0  # Number of columns successfully checked
-    error_details = []  # Collect messages for columns with out-of-range values
+    total_values_checked = 0
+    values_within_range = 0
+    columns_checked = 0
+    error_details = []
 
     for column, acceptable_values in expected_ranges.items():
         if column in data.columns:
@@ -387,7 +358,6 @@ def check_accuracy_tabular(
                 .__int__()
             )
 
-            # Track number of values checked and within the acceptable range
             columns_checked += 1
             total_values_checked += num_column_values
             values_within_range += column_acceptable_values
@@ -399,7 +369,6 @@ def check_accuracy_tabular(
                     f"{column}: {outside_acceptable}/{num_column_values} values not in acceptable range {acceptable_values}"
                 )
 
-    # Handle edge cases where no columns were checked
     if columns_checked == 0:
         return (
             1.0,
@@ -409,10 +378,8 @@ def check_accuracy_tabular(
     if total_values_checked == 0:
         return 1.0, "No numeric values found in tabular data columns."
 
-    # Compute accuracy ratio
     accuracy_ratio = values_within_range / total_values_checked
 
-    # Prepare detailed message including any errors
     if error_details:
         details_str = ", ".join(error_details)
         return (
@@ -433,6 +400,7 @@ def check_coherence_tabular(
     Check if the columns in a tabular DataFrame conform to expected data types.
     Validates each specified column against its expected type ("numeric" or "categorical")
     and returns a coherence score and a descriptive message.
+    Calculates coherence as ratio of consistent features.
 
     Args:
         data (pd.DataFrame): The tabular data to check.
@@ -444,7 +412,6 @@ def check_coherence_tabular(
             - Message describing the check result and any inconsistencies.
     """
 
-    # If no expected types provided, cannot check coherence
     if not exp_col_types:
         return 1.0, "No column type specifications provided. Cannot check coherence."
 
@@ -459,13 +426,11 @@ def check_coherence_tabular(
 
         column_consistent = True
 
-        # Skip columns not present in the DataFrame
         if not column in data.columns:
             continue
 
         if expected_type == "numeric":
 
-            # Check if column is numeric type
             if not pd.api.types.is_numeric_dtype(data[column]):
                 column_consistent = False
 
@@ -495,11 +460,9 @@ def check_coherence_tabular(
         if column_consistent:
             consistent_features += 1
 
-    # If no expected features were found in the DataFrame
     if total_features_checked == 0:
         return 1.0, "Expected features not found in tabular data columns."
 
-    # Calculate coherence as ratio as fraction of consistent features
     coherence_ratio = consistent_features / total_features_checked
 
     if inconsistent_details:
@@ -568,6 +531,8 @@ def check_semantic_coherence_tabular(data: pd.DataFrame) -> Tuple[float, str]:
 def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
     """
     Evaluate completeness of a tabular dataset by checking for missing values (NaNs).
+    Computes number of non-missing values and completeness ratio. Collects missing
+    value details per column.
 
     Args:
         data (pd.DataFrame): The input tabular dataset.
@@ -578,22 +543,18 @@ def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
             - A descriptive message summarizing completeness and any missing values per column.
     """
 
-    # Total number of values in the dataframe
     total_values = data.size
 
     # Handle edge case, empty dataframe
     if total_values == 0:
         return 1.0, "No data to check."
 
-    # Count total missing values across all columns
     total_missing_values = data.isna().sum().sum().__int__()
 
-    # Compute number of non-missing values and completeness ratio
     complete_values = total_values - total_missing_values
     completeness_ratio = complete_values / total_values
 
     if total_missing_values > 0:
-        # Collect missing value details per column
         missing_details = []
 
         for col in data.columns:
@@ -612,7 +573,6 @@ def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
             f"Data completeness: {complete_values}/{total_values} ({completeness_ratio:.1%}). Missing values by column: {missing_details}",
         )
     else:
-        # No missing values, perfect completeness
         return (
             completeness_ratio,
             f"No missing values found in tabular data. Data is 100% complete.",
@@ -622,6 +582,8 @@ def check_completeness_tabular(data: pd.DataFrame) -> Tuple[float, str]:
 def check_relational_consistency_tabular(data: pd.DataFrame) -> Tuple[float, str]:
     """
     Check relational consistency of tabular data by identifying duplicate rows.
+    Calculates ratio of unique rows to total rows and shows at most
+    10 duplicate indices for readability.
 
     Args:
         data (pd.DataFrame): Input tabular dataset to check.
@@ -632,38 +594,31 @@ def check_relational_consistency_tabular(data: pd.DataFrame) -> Tuple[float, str
             - A descriptive message summarizing whether duplicates were found.
     """
 
-    # Total number of rows in dataset
     total_rows = len(data)
 
     # Handle case of empty dataframe
     if total_rows == 0:
         return 1.0, "No data to check."
 
-    # Count unique rows by dropping duplicates
     unique_rows = len(data.drop_duplicates())
 
-    # Ratio of unique rows to total rows
     consistency_ratio = unique_rows / total_rows
 
     # Number of duplicate rows
     duplicate_rows = total_rows - unique_rows
 
     if duplicate_rows > 0:
-        # Boolean mask of duplicated rows
         duplicated_mask = data.duplicated(keep="first")
-        # Get indices of duplicated rows
         duplicated_indices = data[duplicated_mask].index.tolist()
 
         # Percentage of duplicates relative to dataset size
         duplicate_perc = duplicate_rows / total_rows
 
-        # Show at most 10 duplicate indices for readability
         if len(duplicated_indices) > 10:
             indices_str = str(duplicated_indices[:10])[:-1] + ", ...]"
         else:
             indices_str = str(duplicated_indices)
 
-        # Details for duplicate rows in text format
         duplicate_details = f"{duplicate_rows} duplicate rows out of {total_rows} ({duplicate_perc:.1%}), indices: {indices_str}"
 
         return (
@@ -672,7 +627,6 @@ def check_relational_consistency_tabular(data: pd.DataFrame) -> Tuple[float, str
         )
 
     else:
-        # All rows are unique, perfect relational consistency
         return (
             consistency_ratio,
             f"No duplicate rows found in tabular data. All {total_rows} rows are unique.",
@@ -687,6 +641,8 @@ def run_all_checks_tabular(
 ) -> Dict[str, Tuple[float, str]]:
     """
     Run all tabular data quality checks and return results in a dictionary.
+    Checks population, metadata granularity, accuracy, coherence,
+    semantic_coherence, completeness and relational_consistency.
 
     Args:
         tabular_data (pd.DataFrame): Main dataset (X) to validate.
@@ -702,38 +658,30 @@ def run_all_checks_tabular(
             - Descriptive message string.
     """
 
-    # Initialize results dict
     results = {}
 
-    # Check how well the dataset represents population across selected features
     results["population_representativity"] = check_population_representativity_tabular(
         tabular_data=tabular_data,
         target_data=target_data,
         selected_features=selected_feat,
     )
 
-    # Check metadata availability and granularity
     results["metadata_granularity"] = check_metadata_granularity_tabular(
         tabular_data=tabular_data, target_data=target_data
     )
 
-    # Check whether values fall within expected ranges
     results["accuracy"] = check_accuracy_tabular(
         data=tabular_data, expected_ranges=uc_conf.get("expected_ranges")
     )
 
-    # Check consistency of column data types
     results["coherence"] = check_coherence_tabular(
         data=tabular_data, exp_col_types=uc_conf.get("column_types")
     )
 
-    # Check for semantic issues like duplicate column names
     results["semantic_coherence"] = check_semantic_coherence_tabular(data=tabular_data)
 
-    # Check for missing values and completeness of data
     results["completeness"] = check_completeness_tabular(data=tabular_data)
 
-    # Check for duplicate rows to ensure relational consistency
     results["relational_consistency"] = check_relational_consistency_tabular(
         data=tabular_data
     )

@@ -785,12 +785,12 @@ def main():
                     st.session_state.temp_csv_data[0]
                     if len(st.session_state.temp_csv_data[0].columns) > 1
                     else st.session_state.temp_csv_data[1]
-                )  # X (features)
+                )
                 st.session_state.uc4_target_data = (
                     st.session_state.temp_csv_data[1]
                     if len(st.session_state.temp_csv_data[1].columns) == 1
                     else st.session_state.temp_csv_data[0]
-                )  # Y (target)
+                )
 
                 st.session_state.selected_use_case = selected_use_case
                 st.session_state.metadata = None
@@ -1447,7 +1447,6 @@ def main():
 
             elif st.session_state.selected_use_case == "Use case 4":
                 # Use Case 4 (tabular data) configuration
-                # Define available columns based on UC4 data structure
 
                 # target column pre-selected, one per dataset type
                 target_column = st.session_state.uc4_target_data.columns[0]
@@ -1677,7 +1676,7 @@ def main():
                         elif st.session_state.selected_use_case == "Use case 4":
                             # UC4 tabular data specific quantity checks
 
-                            # keep use case config for analysis
+                            # use case config for analysis
                             use_case_config = USE_CASES[
                                 st.session_state.selected_use_case
                             ].copy()
