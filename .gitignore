@@ -4,3 +4,4 @@ sdqf/
 assets
 .venv
 __pycache__
+.vscode

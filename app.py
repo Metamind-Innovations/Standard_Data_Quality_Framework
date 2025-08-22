@@ -23,6 +23,7 @@ from src.uc1_image_quality_checks import (
     run_all_checks_images,
     extract_patient_id_from_path,
 )
+from src.uc4_tabular_quality_checks import run_all_checks_tabular
 from src.utils import convert_dcm_to_nrrd
 
 st.set_page_config(
@@ -38,6 +39,7 @@ if "processed_data" not in st.session_state:
     st.session_state.target_column = None
     st.session_state.age_column = None
     st.session_state.height_column = None
+    st.session_state.other_column = None
     st.session_state.temp_data = None
     st.session_state.temp_metadata = None
     st.session_state.temp_ground_truth = None
@@ -60,6 +62,13 @@ if "processed_data" not in st.session_state:
     st.session_state.uc1_age_column = None
     st.session_state.uc1_gender_column = None
     st.session_state.uc1_subpopulation_column = None
+    # Initialize UC4 variables
+    st.session_state.uc4_data = None
+    st.session_state.uc4_target_data = None
+    st.session_state.uc4_target_column = None
+    st.session_state.uc4_age_column = None
+    st.session_state.uc4_gender_column = None
+    st.session_state.uc4_subpopulation_column = None
 
 QUALITATIVE_DIMENSIONS = {
     "accessibility": {
@@ -193,12 +202,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
 
     calculation_methods = {
         "population_representativity": "Score based on how balanced class distribution is (perfect balance = 1.0)",
-        "metadata_granularity": "patients with metadata / total patients",
-        "accuracy": "values within expected range / total values checked",
-        "coherence": "features with consistent data types / total features",
-        "semantic_coherence": "unique column names / total columns",
-        "completeness": "non-missing values / total values",
-        "relational_consistency": "unique rows / total rows",
+        "metadata_granularity": "Patients with metadata / Total patients",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
         "accessibility": "User assessment based on data obtainability and clarity",
         "use_permissiveness": "User assessment based on license permissiveness",
         "availability": "User assessment based on data availability and access",
@@ -210,21 +219,31 @@ def display_metrics(ratings, metric_type="Quantitative"):
 
     calculation_methods_images = {
         "population_representativity": "Multi-feature analysis: balanced distribution score across selected features (perfect balance = 1.0, maximum imbalance = 0.0)",
-        "metadata_granularity": "Patients with complete metadata / total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
-        "accuracy": "Combined score: slice dimension consistency + missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
+        "metadata_granularity": "Patients with complete metadata / Total patients (≤0.2 ratio = 1/5, ≥0.8 ratio = 5/5)",
+        "accuracy": "Combined score: Slice dimension consistency + Missing slice detection (≤0.2 error ratio = 5/5, ≥0.8 error ratio = 1/5)",
         "coherence": "Number of channels consistency across images (≤0.2 inconsistency = 5/5, ≥0.8 inconsistency = 1/5)",
         "semantic_coherence": "Duplicate image detection using array hash comparison (≤0.2 duplication = 5/5, ≥0.8 duplication = 1/5)",
-        "completeness": "Missing pixels / total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
+        "completeness": "Missing pixels / Total pixels ratio across all images (≤0.2 missing = 5/5, ≥0.8 missing = 1/5)",
     }
 
     calculation_methods_timeseries = {
         "population_representativity": "Demographic subgroup diversity coverage: (subgroups with all diabetic status values) / (total subgroups). Checks age groups (0-20, 20-40, 40-60, 60-80, 80+) and gender groups for presence of Healthy, Type 1 Diabetes, and Type 2 Diabetes patients (perfect coverage = 1.0)",
         "metadata_granularity": "Patients with complete demographic metadata / total patients",
-        "accuracy": "values within expected range / total values checked",
-        "coherence": "features with consistent data types / total features",
-        "semantic_coherence": "unique column names / total columns",
-        "completeness": "non-missing values / total values",
-        "relational_consistency": "unique rows / total rows",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
+    }
+
+    calculation_methods_tabular = {
+        "population_representativity": "Multi-feature analysis: Computes a balance score for each selected feature and for the target, then averages them into a mean balance score (1.0 = perfect balance, 0.0 = maximum imbalance).",
+        "metadata_granularity": "Metadata are not provided for this use case",
+        "accuracy": "Values within expected range / Total values checked",
+        "coherence": "Features with consistent data types / Total features",
+        "semantic_coherence": "Unique column names / Total columns",
+        "completeness": "Non-missing values / Total values",
+        "relational_consistency": "Unique rows / Total rows",
     }
 
     rating_thresholds = """
@@ -241,6 +260,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
     )
 
     is_timeseries_data = st.session_state.selected_use_case == "Use case 3"
+
+    is_tabular_data = st.session_state.selected_use_case == "Use case 4"
 
     for metric, rating_data in ratings.items():
         display_name = metric_names.get(metric, metric)
@@ -264,6 +285,8 @@ def display_metrics(ratings, metric_type="Quantitative"):
                     st.write(calculation_methods_images.get(metric))
                 elif is_timeseries_data and metric in calculation_methods_timeseries:
                     st.write(calculation_methods_timeseries.get(metric))
+                elif is_tabular_data and metric in calculation_methods_tabular:
+                    st.write(calculation_methods_tabular.get(metric))
                 else:
                     st.write(
                         calculation_methods.get(
@@ -279,8 +302,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
                     fig = px.pie(
                         values=[rating, 5 - rating],
                         names=["Score", "Remaining"],
+                        color=["Score", "Remaining"],
                         hole=0.7,
-                        color_discrete_sequence=["#1f77b4", "#e0e0e0"],
+                        color_discrete_map={
+                            "Score": "#1f77b4",
+                            "Remaining": "#e0e0e0",
+                        },
                     )
                     fig.update_layout(
                         showlegend=False,
@@ -295,6 +322,7 @@ def display_metrics(ratings, metric_type="Quantitative"):
                             )
                         ],
                     )
+                    fig.update_traces(sort=False, direction="clockwise")
                     st.plotly_chart(
                         fig, use_container_width=True, key=f"{metric_type}_{metric}_pie"
                     )
@@ -331,8 +359,12 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                     feature_fig = px.pie(
                                         values=[feature_rating, 5 - feature_rating],
                                         names=["Score", "Remaining"],
+                                        color=["Score", "Remaining"],
                                         hole=0.6,
-                                        color_discrete_sequence=["#ff7f0e", "#e0e0e0"],
+                                        color_discrete_map={
+                                            "Score": "#ff7f0e",
+                                            "Remaining": "#e0e0e0",
+                                        },
                                         title=f"{feature_name}",
                                     )
                                     feature_fig.update_layout(
@@ -350,6 +382,9 @@ def display_metrics(ratings, metric_type="Quantitative"):
                                         ],
                                         title_x=0.5,
                                         title_font_size=14,
+                                    )
+                                    feature_fig.update_traces(
+                                        sort=False, direction="clockwise"
                                     )
                                     st.plotly_chart(
                                         feature_fig,
@@ -546,6 +581,7 @@ def main():
 
     st.sidebar.markdown("---")
 
+    # ---------- Files upload per use case ----------
     if selected_use_case == "Use case 1":
         dcm_directory = st.sidebar.text_input(
             "Path to DCM files directory",
@@ -715,6 +751,93 @@ def main():
                 )
             else:
                 st.error("Please upload a ZIP file containing JSON files first!")
+
+    elif selected_use_case == "Use case 4":
+        uploaded_files = st.sidebar.file_uploader(
+            "Upload your dataset (CSV with tabular clinical data) and the target data (CSV with target column)",
+            accept_multiple_files=True,  # because will accept X and Y in separated files
+            type="csv",
+        )
+        uploaded_metadata = st.sidebar.file_uploader(
+            "Upload metadata (optional)",
+            type="csv",
+            disabled=True,
+            help="Separate metadata upload is not available for UC4",
+        )
+
+        if uploaded_files is not None:
+            st.session_state.temp_csv_data = []  # define a list to store X and Y dfs
+            for uploaded_file in uploaded_files:
+                # load each df and store in list
+                try:
+                    st.session_state.temp_csv_data.append(load_data(uploaded_file))
+                except Exception as e:
+                    st.error(f"Error loading UC4 data: {str(e)}")
+                    st.session_state.temp_csv_data = None
+
+        if st.sidebar.button("Load Data"):
+            if (st.session_state.temp_csv_data is not None) and (
+                st.session_state.temp_csv_data != []
+            ):
+
+                st.session_state.selected_use_case = selected_use_case
+                st.session_state.metadata = None
+                st.session_state.image_paths = None
+
+                available_targets_uc4 = USE_CASES.get(
+                    st.session_state.selected_use_case
+                ).get("target_column")
+
+                # check which of the list items is X and Y and store each one to a variable
+                st.session_state.uc4_target_data = next(
+                    (
+                        df
+                        for df in st.session_state.temp_csv_data
+                        if any(col in df.columns for col in available_targets_uc4)
+                    ),
+                    None,
+                )
+
+                if st.session_state.uc4_target_data is not None:
+                    st.session_state.processed_data = next(
+                        (
+                            df
+                            for df in st.session_state.temp_csv_data
+                            if df is not st.session_state.uc4_target_data
+                        ),
+                        None,
+                    )
+                else:
+                    st.session_state.processed_data = None
+
+                if (st.session_state.uc4_target_data is not None) and (
+                    st.session_state.processed_data is not None
+                ):
+                    # check that both files have the same number of records
+                    if len(st.session_state.processed_data) != len(
+                        st.session_state.uc4_target_data
+                    ):
+                        st.error(
+                            f"X and Y must have the same number of records. X has {len(st.session_state.processed_data)} and Y has {len(st.session_state.uc4_target_data)}. Please upload the correct CSV files!"
+                        )
+
+                    else:
+                        if len(st.session_state.processed_data) == 0:
+                            st.error(
+                                f"X and Y cannot be empty. Please upload the correct CSV files!"
+                            )
+                        else:
+                            st.success(
+                                f"UC4 Data loaded successfully! {len(st.session_state.processed_data)} records with clinical data ready for analysis."
+                            )
+                            st.session_state.uc4_data = st.session_state.processed_data
+                else:
+                    st.error(
+                        "Could not detect features or target DataFrame. Please check the CSV files and try again!"
+                    )
+            else:
+                st.error("Please upload the CSV files containing the data first!")
+
     else:
         uploaded_file = st.sidebar.file_uploader("Upload your dataset", type="csv")
         uploaded_metadata = st.sidebar.file_uploader(
@@ -745,9 +868,12 @@ def main():
             else:
                 st.error("Please upload a dataset first!")
 
+    # ---------- End of files upload per use case ----------
+
     if (st.session_state.processed_data is not None) or (
         st.session_state.image_paths is not None
     ):
+        # ---------- Dataset overview per use case ----------
         if st.session_state.image_paths is not None:
             st.subheader("Image Data Overview")
             st.write(
@@ -1055,6 +1181,34 @@ def main():
                 st.info(
                     "No UC3 data loaded yet. Please upload a ZIP file containing JSON files."
                 )
+
+        elif st.session_state.selected_use_case == "Use case 4":
+            st.subheader("Data Preview")
+
+            if st.session_state.uc4_data is not None:
+                colX, colY = st.columns([5, 1])  # 5:1 width ratio
+
+                with colX:
+                    st.markdown("**Clinical Input Data:**")
+                    st.dataframe(
+                        st.session_state.uc4_data.head(10),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                with colY:
+                    st.markdown("**Clinical Target Variable:**")
+                    st.dataframe(
+                        st.session_state.uc4_target_data.head(10),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            else:
+                st.info(
+                    "No UC4 data loaded yet. Please upload CSV files containing the dataset."
+                )
+
         else:
             st.subheader("Data Preview")
             st.dataframe(st.session_state.processed_data, use_container_width=True)
@@ -1062,6 +1216,9 @@ def main():
         st.markdown("---")
         st.subheader("Qualitative Check Configuration")
 
+        # ---------- End of Dataset overview per use case ----------
+
+        # ---------- Quality metrics values set ----------
         col1, col2 = st.columns([1, 3])
         with col1:
             qualitative_file = st.file_uploader(
@@ -1111,6 +1268,9 @@ def main():
             score = int(selected_option[0])
             st.session_state.qualitative_scores[key] = score
 
+        # ---------- End of Quality metrics values set ----------
+
+        # ---------- Quantity check columns configuration ----------
         st.markdown("---")
         st.subheader("Quantitative Check Configuration")
 
@@ -1306,8 +1466,93 @@ def main():
                     other_column if other_column != "None" else None
                 )
 
+            elif st.session_state.selected_use_case == "Use case 4":
+                # Use Case 4 (tabular data) configuration
+
+                # target column pre-selected, one per dataset type
+                target_column = st.session_state.uc4_target_data.columns[0]
+
+                expected_targets = USE_CASES.get(
+                    st.session_state.selected_use_case
+                ).get("target_column")
+                # check if target column exists in expected target columns
+                if not any(
+                    target_column.lower() in x
+                    for x in list(map(str.lower, expected_targets))
+                ):
+                    target_column = None  # if ir does not exist
+
+                st.text(
+                    f"Target column for calculating population representativity: {target_column}."
+                )
+
+                # Create mutually exclusive dropdowns
+                dataset_columns = st.session_state.uc4_data.columns.to_list()
+
+                age_selected = st.session_state.get("age_column_selector", "None")
+                gender_selected = st.session_state.get("gender_column_selector", "None")
+                subpop_selected = st.session_state.get(
+                    "subpopulation_column_selector", "None"
+                )
+
+                age_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [gender_selected, subpop_selected]
+                ]
+                gender_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [age_selected, subpop_selected]
+                ]
+                subpop_options = ["None"] + [
+                    c
+                    for c in dataset_columns
+                    if c not in [age_selected, gender_selected]
+                ]
+
+                # option to select age for population analysis
+                age_column = st.selectbox(
+                    "Select Age Column",
+                    options=age_options,
+                    help="Select the column containing age data for population representativity analysis.",
+                    key="age_column_selector",
+                    index=age_options.index(age_selected),
+                )
+
+                # option to select gender for population analysis
+                gender_column = st.selectbox(
+                    "Select Gender Column",
+                    options=gender_options,
+                    help="Select the column containing gender data for population representativity analysis.",
+                    key="gender_column_selector",
+                    index=gender_options.index(gender_selected),
+                )
+
+                # option to select subpopulation column for population analysis
+                subpopulation_column = st.selectbox(
+                    "Select Subpopulation Column (Optional)",
+                    options=subpop_options,
+                    help="Select an optional column for subpopulation representativity analysis.",
+                    key="subpopulation_column_selector",
+                    index=subpop_options.index(subpop_selected),
+                )
+
+                # set target column and selected columns
+                st.session_state.uc4_target_column = target_column
+
+                st.session_state.uc4_age_column = (
+                    age_column if age_column != "None" else None
+                )
+                st.session_state.uc4_gender_column = (
+                    gender_column if gender_column != "None" else None
+                )
+                st.session_state.uc4_subpopulation_column = (
+                    subpopulation_column if subpopulation_column != "None" else None
+                )
+
             else:
-                # Other use cases (UC4, etc.)
+                # Other use case (UC5)
                 data_columns = list(st.session_state.processed_data.columns)
                 available_target, available_age, available_other = (
                     get_use_case_specific_columns(
@@ -1348,6 +1593,10 @@ def main():
                 st.session_state.other_column = (
                     other_numeric_column if other_numeric_column != "None" else None
                 )
+
+        # ---------- End of Quantity check columns configuration ----------
+
+        # ---------- All checks execution ----------
 
         if st.button("Run Quality Checks", type="primary"):
             if all(score > 0 for score in st.session_state.qualitative_scores.values()):
@@ -1444,7 +1693,33 @@ def main():
                                 use_case_config,
                                 selected_features if selected_features else None,
                             )
+
+                        elif st.session_state.selected_use_case == "Use case 4":
+                            # UC4 tabular data specific quantity checks
+
+                            # use case config for analysis
+                            use_case_config = USE_CASES[
+                                st.session_state.selected_use_case
+                            ].copy()
+
+                            # construct selected features dict for analysis
+                            selected_features = {
+                                "target": st.session_state.uc4_target_column,
+                                "age": st.session_state.uc4_age_column,
+                                "gender": st.session_state.uc4_gender_column,
+                                "subpopulation": st.session_state.uc4_subpopulation_column,
+                            }
+
+                            # run quantity checks for uc4
+                            check_results = run_all_checks_tabular(
+                                tabular_data=st.session_state.uc4_data,
+                                target_data=st.session_state.uc4_target_data,
+                                uc_conf=use_case_config,
+                                selected_feat=selected_features,
+                            )
+
                         else:
+                            # Fallback for other use cases not implemented (e.g. 5)
                             use_case_config = USE_CASES[
                                 st.session_state.selected_use_case
                             ].copy()
@@ -1490,6 +1765,9 @@ def main():
                     "Please complete all qualitative assessment questions before running quality checks!"
                 )
 
+        # ---------- End of checks execution ----------
+
+        # ---------- Display results ----------
         if (
             st.session_state.ratings is not None
             and st.session_state.qualitative_ratings is not None
@@ -1530,6 +1808,8 @@ def main():
             st.subheader("Detailed Quantitative Scores")
             display_metrics(st.session_state.ratings, "Quantitative")
 
+        # ---------- End of Display results ----------
+
     else:
         if selected_use_case == "Use case 1":
             st.info(
@@ -1542,6 +1822,10 @@ def main():
         elif selected_use_case == "Use case 3":
             st.info(
                 "Please upload a ZIP file containing the JSON files corresponding to each patient, then click 'Load Data' to begin."
+            )
+        elif selected_use_case == "Use case 4":
+            st.info(
+                "Please upload a CSV file containing the tabular clinical data and a CSV containing the target clinical data, then click 'Load Data' to begin."
             )
         else:
             st.info("Please upload a dataset and click 'Load Data' to begin.")
